@@ -1,75 +1,66 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useStudentStore } from './stores/useStudentStore'
-import type { Student } from './types/student'
-function App() {
-  const { students, loading, error, loadStudents } = useStudentStore()
-  const [search, setSearch] = useState('')
+import { Timeline } from './components/timeline/Timeline'
+import { SquadPanel } from './components/squad/SquadPanel'
+import { SkillPanel } from './components/skill-panel/SkillPanel'
+import { I18nProvider, useI18n, tpl } from './i18n'
+import type { SupportedLocale } from './i18n'
+
+const LOCALE_LABELS: Record<SupportedLocale, string> = {
+  zh: '中文',
+  en: 'English',
+  ja: '日本語',
+}
+
+function AppContent() {
+  const { loadStudents } = useStudentStore()
+  const { t, locale, setLocale } = useI18n()
 
   useEffect(() => {
     loadStudents()
   }, [loadStudents])
 
-  // 搜索过滤
-  const filtered = students
-    ? Object.values(students).filter(
-      (s) =>
-        !search ||
-        s.Name.toLowerCase().includes(search.toLowerCase()) ||
-        s.School.toLowerCase().includes(search.toLowerCase())
-    )
-    : []
-
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
-      <h1 className="text-2xl font-bold mb-4">🎯 Abi-Eshuh</h1>
+    <div className="h-screen flex flex-col bg-gray-900 text-white">
+      {/* 顶部标题栏 */}
+      <header className="shrink-0 px-4 py-2 border-b border-gray-700 bg-gray-800/50 flex items-center justify-between">
+        <h1 className="text-lg font-bold">🎯 {t.app.title}</h1>
 
-      {/* 加载状态 */}
-      {loading && <p className="text-gray-400">加载学生数据中...</p>}
-      {error && <p className="text-red-400">错误: {error}</p>}
+        {/* 语言切换 */}
+        <select
+          value={locale}
+          onChange={(e) => setLocale(e.target.value as SupportedLocale)}
+          className="bg-gray-700 text-xs text-gray-300 rounded px-2 py-1 border border-gray-600"
+        >
+          {Object.entries(LOCALE_LABELS).map(([key, label]) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+      </header>
 
-      {students && (
-        <>
-          {/* 搜索框 */}
-          <input
-            type="text"
-            placeholder="搜索学生名称或学校..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full max-w-md px-4 py-2 rounded bg-gray-800 border border-gray-700 text-white mb-4"
-          />
+      {/* 主内容区 */}
+      <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+        {/* 左侧面板 */}
+        <aside className="w-72 shrink-0 flex flex-col gap-3 overflow-y-auto">
+          <SquadPanel />
+          <SkillPanel />
+        </aside>
 
-          {/* 统计信息 */}
-          <p className="text-sm text-gray-400 mb-4">
-            共 {Object.keys(students).length} 名学生
-            {search && `，搜索到 ${filtered.length} 名`}
-          </p>
-
-          {/* 学生列表 */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {filtered.slice(0, 48).map((s) => (
-              <StudentCard key={s.Id} student={s} />
-            ))}
-          </div>
-        </>
-      )}
+        {/* 右侧时间轴 */}
+        <main className="flex-1 min-w-0">
+          <Timeline />
+        </main>
+      </div>
     </div>
   )
 }
 
-function StudentCard({ student }: { student: Student }) {
+function App() {
   return (
-    <div className="bg-gray-800 rounded-lg p-3 border border-gray-700 hover:border-blue-500 transition-colors">
-      <div className="font-semibold text-sm truncate">{student.Name}</div>
-      <div className="text-xs text-gray-400 mt-1">
-        {student.School} · {student.Position}
-      </div>
-      <div className="flex gap-1 mt-1">
-        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-700">{student.BulletType}</span>
-        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-700">{student.ArmorType}</span>
-      </div>
-    </div>
+    <I18nProvider>
+      <AppContent />
+    </I18nProvider>
   )
 }
 
 export default App
-
