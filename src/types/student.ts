@@ -19,106 +19,69 @@ export type WeaponType = 'AR' | 'FT' | 'GL' | 'HG' | 'MG' | 'MT' | 'RG' | 'RL' |
 
 export type BattleAdaptation = 0 | 1 | 2 | 3 | 4 | 5
 
-// ==================== 技能帧 & 效果 ====================
+// ==================== 技能相关 ====================
 
 /**
- * 单个技能效果（如一次伤害、一次治疗、一个Buff）
- * 每个 Effect 可以有自己的生效延迟（ApplyFrame）
+ * 技能效果
  *
- * ⏱️ 时间单位说明：
- *   - 技能动画 Duration、ApplyFrame、Frames 系列 → 单位：帧（30帧 = 1秒）
- *   - Effect.Duration、Period、ZoneDuration、ZoneHitInterval → 单位：毫秒（1000ms = 1秒）
+ * ⏱️ 时间单位：
+ *   - ApplyFrame → 帧（30帧 = 1秒）
+ *   - Duration、Period → 毫秒（1000ms = 1秒）
  */
 export interface SkillEffect {
   Type: string
-  /** 生效延迟（帧），从技能开始到该效果实际产生作用 */
+  /** 生效延迟（帧） */
   ApplyFrame?: number
-  /** 效果持续时间（毫秒），如 Buff 持续 30 秒 = 30000 */
+  /** 效果持续时间（毫秒） */
   Duration?: number
-  /** 伤害/治疗倍率（各等级） */
+  /** 伤害/治疗倍率 */
   Scale?: number[]
   /** 击中次数 */
   Hits?: number[]
-  /** 效果目标 */
+  /** 目标类型 */
   Target?: string[]
   /** 影响属性 */
   Stat?: string
   /** 属性值（各等级） */
   Value?: number[][]
-  Block?: number
-  CriticalCheck?: string
-  DescParamId?: number
-  /** Buff 叠层标签 */
+  /** 周期间隔（毫秒） */
+  Period?: number
+  /** 召唤单位 ID */
+  SummonId?: number
+  /** 触发概率 */
+  Chance?: number
+  /** 触发条件 */
+  Condition?: string
+  /** 叠层标签 */
   StackLabel?: string
   StackSame?: boolean
-  /** 间隔生效（毫秒），周期效果如 DoT/HoT 每多少毫秒触发一次 */
-  Period?: number
-  /** 领域持续时间（毫秒） */
-  ZoneDuration?: number
-  /** 领域伤害间隔（毫秒） */
-  ZoneHitInterval?: number
-  Chance?: number
-  /** 召唤单位 */
-  SummonId?: number
-  /** 位移效果 */
-  Reposition?: boolean
-  /** 条件 */
-  Condition?: string
-  Restrictions?: string[]
 }
 
-/**
- * 普通攻击的帧数据
- * 所有字段单位均为帧（30帧 = 1秒）
- */
-export interface NormalAttackFrames {
-  AttackEnterDuration: number
-  AttackStartDuration: number
-  AttackEndDuration: number
-  AttackBurstRoundOverDelay: number
-  AttackIngDuration: number
-  AttackReloadDuration: number
-  AttackReadyStartDuration?: number
-  AttackReadyEndDuration?: number
-}
-
-// ==================== 技能 ====================
-
-/** EX 技能 */
 export interface ExSkill {
   Name: string
   Desc: string
   Parameters: string[][]
-  /** 各等级 COST 消耗 */
   Cost: number[]
-  /** 动画总时长（帧），30帧 = 1秒 */
+  /** 动画时长（帧） */
   Duration: number
   Range: number
   Radius?: { Type: string; Radius: number }[]
   Icon: string
   Effects: SkillEffect[]
-  /** 可选择的多段EX */
-  Selectable?: boolean
-  ExtraSkills?: unknown
-  GroupLabel?: string
 }
 
-/** 普通技能（自动触发） */
 export interface PublicSkill {
   Name: string
   Desc: string
   Parameters: string[][]
-  /** 动画总时长（帧），30帧 = 1秒 */
+  /** 动画时长（帧） */
   Duration: number
   Range: number
   Radius?: { Type: string; Radius: number }[]
   Icon: string
   Effects: SkillEffect[]
-  ExtraSkills?: unknown
-  GroupLabel?: string
 }
 
-/** 被动技能 */
 export interface PassiveSkill {
   Name: string
   Desc: string
@@ -127,83 +90,98 @@ export interface PassiveSkill {
   Effects: SkillEffect[]
 }
 
-/** 学生全部技能 */
-export interface StudentSkills {
-  Normal: { Effects: SkillEffect[]; Frames: NormalAttackFrames; Radius?: { Type: string; Radius: number }[] }
-  Ex: ExSkill
-  Public: PublicSkill
-  GearPublic: PublicSkill
-  Passive: PassiveSkill
-  WeaponPassive: PassiveSkill
-  ExtraPassive: PassiveSkill
+export interface NormalAttack {
+  /** 帧数据（单位：帧） */
+  Frames: {
+    AttackEnterDuration: number
+    AttackStartDuration: number
+    AttackEndDuration: number
+    AttackBurstRoundOverDelay: number
+    AttackIngDuration: number
+    AttackReloadDuration: number
+    AttackReadyStartDuration?: number
+    AttackReadyEndDuration?: number
+  }
+  Radius?: { Type: string; Radius: number }[]
 }
 
-// ==================== 学生主数据（排轴用精简版） ====================
+export interface StudentSkills {
+  /** Normal attack */
+  N: NormalAttack
+  /** EX skill */
+  E: ExSkill
+  /** Public skill (auto) */
+  P: PublicSkill
+  /** Gear-enhanced public skill */
+  G: PublicSkill
+  /** Passive skill */
+  PS: PassiveSkill
+  /** Weapon passive skill */
+  WP: PassiveSkill
+  /** Extra passive skill (sub skill) */
+  EP: PassiveSkill
+}
+
+// ==================== 学生主数据（精简版） ====================
 
 export interface Student {
-  /** 学生唯一 ID */
   Id: number
-  PathName: string
-  /** 中文名 */
   Name: string
-  /** 头像 Icon */
   Icon: string
 
-  // ---- 编队属性 ----
   School: School
   SquadType: SquadType
   TacticRole: TacticRole
   Position: Position
   StarGrade: number
 
-  // ---- 攻防类型 ----
   BulletType: BulletType
   ArmorType: ArmorType
   WeaponType: WeaponType
   Cover: boolean
 
-  // ---- 地形适应 ----
-  StreetBattleAdaptation: BattleAdaptation
-  OutdoorBattleAdaptation: BattleAdaptation
-  IndoorBattleAdaptation: BattleAdaptation
+  /** 街道战适性 */
+  Street: BattleAdaptation
+  /** 户外战适性 */
+  Outdoor: BattleAdaptation
+  /** 室内战适性 */
+  Indoor: BattleAdaptation
 
-  // ---- 面板属性（满级基础值） ----
-  AttackPower: number
-  MaxHP: number
-  DefensePower: number
-  HealPower: number
-  DodgePoint: number
-  AccuracyPoint: number
-  CriticalPoint: number
-  CriticalDamageRate: number
+  /** 攻击力（满级） */
+  ATK: number
+  /** 生命值（满级） */
+  HP: number
+  /** 防御力（满级） */
+  DEF: number
+  /** 治愈力（满级） */
+  HEAL: number
+  Dodge: number
+  Accuracy: number
+  Crit: number
+  CritDMG: number
 
-  // ---- 好感度加成 ----
-  FavorStats: {
-    statType: 'AttackPower' | 'MaxHP' | 'DefensePower' | 'HealPower'
-    values: number[]
-  }[]
-
-  // ---- 战斗机制 ----
-  AmmoCount: number
+  /** 弹药数 */
+  Ammo: number
+  /** 每发弹药消耗 */
   AmmoCost: number
   Range: number
-  SightPoint: number
+  Sight: number
   /** COST 恢复速度 */
-  RegenCost: number
+  Regen: number
 
-  // ---- 技能 ----
+  /** 好感度属性加成 */
+  Favor: { t: string; v: number[] }[]
+
   Skills: StudentSkills
 
-  // ---- 武器加成 ----
   Weapon: {
-    AttackPower: number
-    MaxHP: number
-    HealPower: number
+    ATK: number
+    HP: number
+    HEAL: number
   }
 
-  /** 是否持有爱用品 */
   HasGear: boolean
 }
 
-/** SchaleDB 原始数据格式 */
+/** 以 ID 为 key 的学生字典 */
 export type StudentDB = Record<string, Student>
