@@ -1,73 +1,23 @@
-# React + TypeScript + Vite
+# 🎯 Abi-Eshuh — 碧蓝档案 排轴工具
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> 一个基于 React + TypeScript 的《碧蓝档案》战斗排轴工具，支持拖拽排序与可视化时间轴编辑。
 
-Currently, two official plugins are available:
+## ✨ 功能规划
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **⏱️ 时间轴编辑** — 可视化编辑战斗时间轴
+- **🔄 拖拽排序** — 通过拖拽调整技能/行动顺序
+- **📋 队伍配置** — 管理多个学生编队
+- **💾 本地持久化** — 使用本地存储保存排轴方案
+- **🔗 方案分享** — 导出/导入排轴方案
 
-## React Compiler
+## 🛠️ 技术栈
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 技术 | 用途 |
+|------|------|
+| [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) | 前端框架 |
+| [Vite](https://vite.dev/) | 构建工具 |
+| [Tailwind CSS](https://tailwindcss.com/) | 样式框架 |
+| [@dnd-kit](https://dnd-kit.com/) | 拖拽排序 |
+| [Zustand](https://github.com/pmndrs/zustand) | 状态管理 |
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🚀 快速开始
