@@ -37,7 +37,7 @@ export function StudentSelectDialog({
       onClick={handleOverlayClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
     >
-      <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-[420px] max-h-[600px] flex flex-col">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-[680px] h-[90vh] max-h-[750px] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <h3 className="text-sm font-semibold text-gray-200">{title}</h3>
           <button
@@ -48,7 +48,7 @@ export function StudentSelectDialog({
           </button>
         </div>
 
-        <div className="flex-1 overflow-hidden p-4">
+        <div className="flex-1 p-4 min-h-0">
           <StudentSearch
             squadType={squadType}
             excludeIds={excludeIds}
@@ -62,3 +62,4 @@ export function StudentSelectDialog({
     </div>
   )
 }
+
