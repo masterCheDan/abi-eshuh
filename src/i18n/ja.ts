@@ -35,13 +35,14 @@ export const ja: LanguagePack = {
     frame: 'フレーム',
     target: '対象',
     target_self: '自身',
+    target_none: '未選択',
   },
   timeline: {
     empty_hint: 'ここにスキルをドラッグ',
     zoom_hint: 'Ctrl+スクロールで拡大縮小',
   },
   event_log: {
-    title: '💥 EX イベントログ',
+    title: 'タイムライン プレビュー',
     empty: 'EXスキルイベントはありません',
     col_time: '時間',
     col_frame: 'フレーム',

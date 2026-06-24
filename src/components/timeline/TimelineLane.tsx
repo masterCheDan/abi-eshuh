@@ -166,6 +166,7 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const moveSkillBlock = useTimelineStore((s) => s.moveSkillBlock)
   const removeSkillBlock = useTimelineStore((s) => s.removeSkillBlock)
+  const allLanes = useTimelineStore((s) => s.lanes)
   const [dragOverFrame, setDragOverFrame] = useState<number | null>(null)
 
   const frameFromEvent = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -186,18 +187,30 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
     return Math.max(...skillRows) + 1
   }, [skillRows])
 
+  // 规则2：全局其他轨道 EX 起始帧集合
+  const globalExFrames = useMemo(() => {
+    const set = new Set<number>()
+    for (const l of allLanes) {
+      if (l.slotIndex === slotIndex) continue
+      for (const s of l.skills) {
+        if (s.type === 'ex') set.add(s.startFrame)
+      }
+    }
+    return set
+  }, [allLanes, slotIndex])
+
   // ── 从技能面板拖入 / 内部移动 ──
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragOverFrame(null)
 
-  // 计算技能足迹（仅动画帧，不含后效）
-  const getFootprint = (s: SkillBlock) => {
-    const segs = getSkillSegments(s, student!)
-    return segs.preCast + segs.active
-  }
+    // 计算技能足迹（仅动画帧，不含后效）
+    const getFootprint = (s: SkillBlock) => {
+      const segs = getSkillSegments(s, student!)
+      return segs.preCast + segs.active
+    }
 
-    // 构建现有技能区间
+    // 构建当前轨道已有技能区间
     const buildRanges = (excludeIndex?: number): SkillRange[] =>
       skills
         .map((s, i) => {
@@ -206,13 +219,19 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
         })
         .filter((r): r is SkillRange => r !== null)
 
-    // ── 内部拖拽移动（所有类型：自身后移避让） ──
+    // ── 内部拖拽移动 ──
     const moveData = e.dataTransfer.getData(DRAG_MOVE_KEY)
     if (moveData) {
       const { skillIndex, fromSlotIndex } = JSON.parse(moveData)
+      const moved = skills[skillIndex]
       const ranges = buildRanges(skillIndex)
-      const footprint = getFootprint(skills[skillIndex])
-      const frame = snapToNonOverlap(ranges, frameFromEvent(e), footprint)
+      const footprint = getFootprint(moved)
+      let frame = snapToNonOverlap(ranges, frameFromEvent(e), footprint)
+
+      if (moved.type === 'ex') {
+        while (globalExFrames.has(frame)) frame++
+      }
+
       moveSkillBlock(fromSlotIndex, skillIndex, slotIndex, frame)
       return
     }
@@ -228,15 +247,18 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
     const footprint = getFootprint(dragged)
 
     if (dragged.type === 'ex') {
-      // ═══ EX 技能：优先级最高，NS/SS 为其让路 ═══
+      // ═══ EX 技能：优先级最高 ═══
 
-      // 1. 与已有 EX 冲突 → 自身后移
+      // 规则1a：与同学生已有 EX 冲突 → 自身后移
       const exRanges = skills
         .filter((s) => s.type === 'ex')
         .map((s) => ({ start: s.startFrame, end: s.startFrame + getFootprint(s) }))
-      const finalFrame = snapToNonOverlap(exRanges, proposedFrame, footprint)
+      let finalFrame = snapToNonOverlap(exRanges, proposedFrame, footprint)
 
-      // 2. 找出被挤出位置的 NS/SS（按 index 降序避免位移）
+      // 规则2：一帧内最多一个 EX（跨轨道），逐帧后移
+      while (globalExFrames.has(finalFrame)) finalFrame++
+
+      // 规则1b：NS/SS 被 EX 挤出 → 推到 EX 之后（同学生）
       const pushedNS = skills
         .map((s, i) => ({ skill: s, index: i }))
         .filter(({ skill }) => skill.type !== 'ex')
@@ -246,19 +268,24 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
         })
         .sort((a, b) => b.index - a.index)
 
-      // 3. 将 NS/SS 逐个推到 EX 之后
       let cursor = finalFrame + footprint
       for (const { index } of pushedNS) {
         moveSkillBlock(slotIndex, index, slotIndex, cursor)
         cursor += getFootprint(skills[index])
-        // 注：moveSkillBlock 会修改 store，下一个 push 的 index 仍然有效（因为按降序处理）
       }
 
       addSkillBlock(lane.slotIndex, { ...dragged, startFrame: finalFrame })
     } else {
-      // ═══ NS/SS 技能：避让所有已有技能 ═══
+      // ═══ NS/SS 技能：避让同学生所有已有技能（EX 不受影响） ═══
       const ranges = buildRanges()
-      const frame = snapToNonOverlap(ranges, proposedFrame, footprint)
+      let frame = snapToNonOverlap(ranges, proposedFrame, footprint)
+
+      // 确保不打扰同学生已有的 EX
+      const exRangesAll = skills
+        .filter((s) => s.type === 'ex')
+        .map((s) => ({ start: s.startFrame, end: s.startFrame + getFootprint(s) }))
+      frame = snapToNonOverlap(exRangesAll, frame, footprint)
+
       addSkillBlock(lane.slotIndex, { ...dragged, startFrame: frame })
     }
   }

@@ -33,13 +33,14 @@ export const zh = {
     frame: '帧',
     target: '目标',
     target_self: '自身',
+    target_none: '未选择',
   },
   timeline: {
     empty_hint: '拖拽技能到此处',
     zoom_hint: 'Ctrl+滚轮缩放',
   },
   event_log: {
-    title: '💥 EX 事件日志',
+    title: '轴预览',
     empty: '暂无 EX 技能事件',
     col_time: '时间',
     col_frame: '帧数',

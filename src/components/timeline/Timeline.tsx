@@ -34,7 +34,7 @@ export function Timeline() {
   }, [])
 
   return (
-    <div className="flex flex-col h-full rounded-lg overflow-hidden border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+    <div className="flex flex-col h-full rounded-lg border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <span className="text-[10px] text-gray-500">滚轮缩放</span>
         <div className="flex items-center gap-1">
@@ -58,7 +58,7 @@ export function Timeline() {
 
       {/* 标尺 + 轨道共用同一个水平滚动容器 */}
       <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
-        <div style={{ width: totalWidth, minHeight: '100%' }}>
+        <div style={{ width: totalWidth, minHeight: '100%', paddingBottom: 48 }}>
           <TimelineRuler totalFrames={totalFrames} pxPerFrame={pxPerFrame} />
 
           {lanes.map((lane) => (

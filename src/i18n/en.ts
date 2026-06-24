@@ -35,13 +35,14 @@ export const en: LanguagePack = {
     frame: 'frames',
     target: 'Target',
     target_self: 'Self',
+    target_none: 'Not selected',
   },
   timeline: {
     empty_hint: 'Drag skills here',
     zoom_hint: 'Ctrl+Scroll to zoom',
   },
   event_log: {
-    title: '💥 EX Event Log',
+    title: 'Timeline Preview',
     empty: 'No EX skill events yet',
     col_time: 'Time',
     col_frame: 'Frame',
