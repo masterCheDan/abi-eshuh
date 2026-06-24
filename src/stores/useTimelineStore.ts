@@ -51,6 +51,8 @@ interface TimelineStore {
   removeSkillBlock: (slotIndex: number, skillIndex: number) => void
   /** 清空时间轴 */
   clearTimeline: () => void
+  /** 整体替换 lanes（导入分享码时使用） */
+  replaceAllLanes: (lanes: StudentLane[]) => void
 }
 
 export const useTimelineStore = create<TimelineStore>((set) => ({
@@ -131,5 +133,7 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
     })),
 
   clearTimeline: () => set({ lanes: createEmptyLanes('normal') }),
+
+  replaceAllLanes: (lanes) => set({ lanes }),
 }))
 

@@ -38,6 +38,15 @@ export const zh = {
   timeline: {
     empty_hint: '拖拽技能到此处',
     zoom_hint: 'Ctrl+滚轮缩放',
+    export: '导出',
+    export_natural: '自然语言',
+    export_share: '分享码',
+    export_copy: '复制',
+    export_download: '下载',
+    export_copied: '已复制到剪贴板',
+    import_title: '导入',
+    import_placeholder: '粘贴分享码...',
+    import_btn: '导入',
   },
   event_log: {
     title: '轴预览',

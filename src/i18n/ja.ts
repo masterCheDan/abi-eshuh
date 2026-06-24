@@ -40,6 +40,15 @@ export const ja: LanguagePack = {
   timeline: {
     empty_hint: 'ここにスキルをドラッグ',
     zoom_hint: 'Ctrl+スクロールで拡大縮小',
+    export: 'エクスポート',
+    export_natural: '自然言語',
+    export_share: '共有コード',
+    export_copy: 'コピー',
+    export_download: 'ダウンロード',
+    export_copied: 'クリップボードにコピーしました',
+    import_title: 'インポート',
+    import_placeholder: '自然言語のプランを貼り付け...',
+    import_btn: 'インポート',
   },
   event_log: {
     title: 'タイムライン プレビュー',

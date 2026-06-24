@@ -44,6 +44,8 @@ interface SquadStore {
   getAvailableSupportCount: () => number
   /** 获取所有已配置的学生 */
   getAssignedStudents: () => Student[]
+  /** 整体替换编队（导入分享码时使用） */
+  replaceAllSlots: (slots: SquadSlot[]) => void
 }
 
 export const useSquadStore = create<SquadStore>((set, get) => ({
@@ -116,5 +118,10 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
       .filter((s) => s.student)
       .map((s) => s.student!)
   },
+
+  replaceAllSlots: (slots) =>
+    set((state) => ({
+      config: { ...state.config, slots },
+    })),
 }))
 

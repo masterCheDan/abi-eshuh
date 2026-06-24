@@ -40,6 +40,15 @@ export const en: LanguagePack = {
   timeline: {
     empty_hint: 'Drag skills here',
     zoom_hint: 'Ctrl+Scroll to zoom',
+    export: 'Export',
+    export_natural: 'Natural Language',
+    export_share: 'Share Code',
+    export_copy: 'Copy',
+    export_download: 'Download',
+    export_copied: 'Copied to clipboard',
+    import_title: 'Import',
+    import_placeholder: 'Paste natural language plan...',
+    import_btn: 'Import',
   },
   event_log: {
     title: 'Timeline Preview',
