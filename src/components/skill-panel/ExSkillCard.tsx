@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Student } from '../../types/student'
 import { useTimelineStore } from '../../stores/useTimelineStore'
+import { useSquadStore } from '../../stores/useSquadStore'
 import type { SkillBlock } from '../../types/timeline'
 import { SkillAddForm } from './SkillAddForm'
 import { useI18n, tpl } from '../../i18n'
@@ -14,6 +15,13 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const [startFrame, setStartFrame] = useState(0)
   const [showAll, setShowAll] = useState(false)
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
+  const slots = useSquadStore((s) => s.config.slots)
+
+  // 查找该学生对应的 slotIndex
+  const slotIndex = useMemo(() => {
+    const slot = slots.find((s) => s.student?.Id === student.Id)
+    return slot?.index ?? -1
+  }, [slots, student.Id])
 
   const ex = student.Skills.E
   const hasGear = student.HasGear
@@ -22,15 +30,15 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
 
   const exApplyFrame = ex.Effects.find((ef) => ef.ApplyFrame != null)?.ApplyFrame ?? Math.floor(ex.Duration / 2)
 
-  const handleAdd = (type: SkillBlock['type'], name: string, duration: number, applyFrame: number) => {
+  const handleAdd = (type: SkillBlock['type'], name: string) => {
+    if (slotIndex < 0) return
     const block: SkillBlock = {
       type,
       name,
       startFrame,
-      applyFrame,
-      duration,
+      studentId: student.Id,
     }
-    addSkillBlock(student.Id, block)
+    addSkillBlock(slotIndex, block)
   }
 
   return (
@@ -71,7 +79,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
         duration={ex.Duration}
         applyFrame={exApplyFrame}
         studentId={student.Id}
-        onAdd={(name, dur, af) => handleAdd('ex', name, dur, af)}
+        onAdd={(name) => handleAdd('ex', name)}
       />
 
       <SkillAddForm
@@ -80,8 +88,8 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
         duration={ns.Duration}
         applyFrame={ns.Effects.find((ef) => ef.ApplyFrame != null)?.ApplyFrame ?? 0}
         studentId={student.Id}
-        onAdd={(name, dur, af) => {
-          if (name !== t.skill.no_skill) handleAdd('ns', name, dur, af)
+        onAdd={(name) => {
+          if (name !== t.skill.no_skill) handleAdd('ns', name)
         }}
       />
 
@@ -99,3 +107,4 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     </div>
   )
 }
+

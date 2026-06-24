@@ -52,14 +52,14 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
     slots: createNormalSlots(),
   },
 
-  setMode: (mode) =>
+  setMode: (mode) => {
+    const newSlots = mode === 'normal' ? createNormalSlots() : createTotalAssaultSlots()
     set({
-      config: {
-        mode,
-        slots: mode === 'normal' ? createNormalSlots() : createTotalAssaultSlots(),
-      },
-    }),
-
+      config: { mode, slots: newSlots },
+    })
+    // 同步重设时间轴轨道
+    useTimelineStore.getState().initLanes(mode)
+  },
   assignStudent: (slotIndex, student) =>
     set((state) => {
       const slot = state.config.slots[slotIndex]
@@ -71,8 +71,8 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
           : s
       )
 
-      // 同步添加到时间轴
-      useTimelineStore.getState().addStudent(student)
+      // 同步分配到时间轴对应 slot
+      useTimelineStore.getState().assignSlot(slotIndex, student)
 
       return {
         config: { ...state.config, slots: newSlots },
@@ -84,8 +84,8 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
       const slot = state.config.slots[slotIndex]
       if (!slot || !slot.student) return state
 
-      // 从时间轴移除
-      useTimelineStore.getState().removeStudent(slot.student.Id)
+      // 从时间轴移除（同时清空技能）
+      useTimelineStore.getState().unassignSlot(slotIndex)
 
       const newSlots = state.config.slots.map((s) =>
         s.index === slotIndex
@@ -117,3 +117,4 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
       .map((s) => s.student!)
   },
 }))
+

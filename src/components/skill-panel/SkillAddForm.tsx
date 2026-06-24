@@ -10,7 +10,7 @@ interface SkillAddFormProps {
   applyFrame: number
   studentId?: number
   triggerInfo?: string
-  onAdd: (name: string, duration: number, applyFrame: number) => void
+  onAdd: (name: string) => void
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -31,12 +31,10 @@ export function SkillAddForm({ label, skillName, cost, duration, applyFrame, stu
       type: label.toLowerCase() as SkillBlock['type'],
       name: skillName,
       startFrame: 0,
-      applyFrame,
-      duration,
       studentId,
     }
     e.dataTransfer.setData(DRAG_SKILL_KEY, JSON.stringify(data))
-    e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.effectAllowed = 'copyMove'
   }
 
   return (
@@ -54,7 +52,7 @@ export function SkillAddForm({ label, skillName, cost, duration, applyFrame, stu
 
         {isDraggable && (
           <button
-            onClick={() => onAdd(skillName, duration, applyFrame)}
+            onClick={() => onAdd(skillName)}
             className="text-[10px] text-blue-400 hover:text-blue-300 shrink-0 ml-1"
           >
             {t.skill.add}
@@ -71,3 +69,4 @@ export function SkillAddForm({ label, skillName, cost, duration, applyFrame, stu
     </div>
   )
 }
+

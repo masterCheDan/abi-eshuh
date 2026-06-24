@@ -48,13 +48,36 @@ export interface SkillEffect {
   Period?: number
   /** 召唤单位 ID */
   SummonId?: number
-  /** 触发概率 */
+  /** 触发概率 (10000 = 100%) */
   Chance?: number
-  /** 触发条件 */
+  /** 触发条件描述 */
   Condition?: string
   /** 叠层标签 */
   StackLabel?: string
   StackSame?: boolean
+  // ── 以下为推导引擎额外需要的字段 ──
+  /** 多段伤害分组标记 */
+  Block?: number
+  /** 是否可暴击 ("Check" = 可暴击) */
+  CriticalCheck?: string
+  /** Buff/Debuff 分组 Channel (同 Channel 不可叠加) */
+  Channel?: number
+  /** CC/DoT 图标 (如 "Stunned", "Burn") */
+  Icon?: string
+  /** Special 效果 Key (如 "FormChange") */
+  Key?: string
+  /** Summon 施法者属性来源 */
+  CasterStat?: string
+  /** Regen 额外属性来源 (如 "TargetLostHP") */
+  ExtraStatSource?: string
+  /** Regen 额外属性倍率 */
+  ExtraStatRate?: number
+  /** CostChange 值类型 */
+  ValueType?: string
+  /** CostChange 可用次数 */
+  Uses?: number
+  /** 描述参数 ID (映射到父技能 Parameters 数组) */
+  DescParamId?: number
 }
 
 export interface ExSkill {

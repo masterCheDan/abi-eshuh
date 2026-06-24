@@ -1,8 +1,8 @@
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { TimelineLane } from './TimelineLane'
 import { TimelineRuler } from './TimelineRuler'
-import { useI18n, tpl } from '../../i18n'
+import { useI18n } from '../../i18n'
 
 const BASE_PX_PER_FRAME = 2
 const ZOOM_STEP = 0.25
@@ -18,21 +18,26 @@ export function Timeline() {
   const pxPerFrame = BASE_PX_PER_FRAME * zoom
   const totalWidth = totalFrames * pxPerFrame
 
-  const handleWheelCapture = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  /** 原生绑 wheel 事件以使用 passive: false */
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
       e.preventDefault()
-      e.stopPropagation()
       setZoom((prev) => {
         const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
         return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta))
       })
     }
+
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
   }, [])
 
   return (
     <div className="flex flex-col h-full bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1 border-b border-gray-700 bg-gray-800/50 shrink-0">
-        <span className="text-[10px] text-gray-500">{t.timeline.zoom_hint}</span>
+        <span className="text-[10px] text-gray-500">滚轮缩放</span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP))}
@@ -52,23 +57,14 @@ export function Timeline() {
         </div>
       </div>
 
-      <TimelineRuler totalFrames={totalFrames} pxPerFrame={pxPerFrame} />
-
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-x-auto overflow-y-auto"
-        onWheelCapture={handleWheelCapture}
-      >
+      {/* 标尺 + 轨道共用同一个水平滚动容器 */}
+      <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
         <div style={{ width: totalWidth, minHeight: '100%' }}>
-          {lanes.length === 0 && (
-            <div className="flex items-center justify-center h-32 text-gray-500 text-sm">
-              {t.timeline.empty_hint}
-            </div>
-          )}
+          <TimelineRuler totalFrames={totalFrames} pxPerFrame={pxPerFrame} />
 
           {lanes.map((lane) => (
             <TimelineLane
-              key={lane.studentId}
+              key={lane.slotIndex}
               lane={lane}
               pxPerFrame={pxPerFrame}
             />
@@ -78,3 +74,4 @@ export function Timeline() {
     </div>
   )
 }
+

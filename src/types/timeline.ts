@@ -1,27 +1,27 @@
 import type { Student } from './student'
 
-/** 时间轴上的一个技能块 */
+/** 时间轴上的一个技能块（仅记录事实，不包含推导数据） */
 export interface SkillBlock {
   /** 技能类型 */
   type: 'ex' | 'ns' | 'ss'
   /** 技能名称 */
   name: string
-  /** 在时间轴上的起始位置（帧） */
+  /** 在时间轴上的施放时间点（帧） */
   startFrame: number
-  /** 生效延迟（帧），startFrame + applyFrame = 技能实际生效点 */
-  applyFrame: number
-  /** 动画总持续时间（帧） */
-  duration: number
-  /** 所属学生 ID（用于拖拽时传递） */
-  studentId?: number
+  /** 所属学生 ID */
+  studentId: number
 }
 
 /** 时间轴上的一个学生轨道 */
 export interface StudentLane {
-  /** 学生 ID */
-  studentId: number
-  /** 学生引用 */
-  student: Student
+  /** 轨道的固定序号（对应 squad slot index） */
+  slotIndex: number
+  /** 显示标签（如 "前排 1"、"后排 2"） */
+  label: string
+  /** 所属学生（null 表示空位） */
+  student: Student | null
+  /** 学生 ID（快捷字段） */
+  studentId: number | null
   /** 该轨道上的技能块列表 */
   skills: SkillBlock[]
 }

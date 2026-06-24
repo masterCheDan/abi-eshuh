@@ -15,38 +15,23 @@ for sid, s in raw.items():
     favor_values = s.get('FavorStatValue', [])
 
     def clean_effects(effects):
-        """只保留需要的 Effect 字段"""
+        """只保留推导引擎需要的 Effect 字段"""
         if not effects:
             return []
         cleaned = []
+        keep_keys = {
+            'Type', 'ApplyFrame', 'Duration',
+            'Scale', 'Hits', 'Target', 'Stat', 'Value', 'Period',
+            'SummonId', 'Chance', 'Condition', 'StackLabel', 'StackSame',
+            # 推导引擎额外需要
+            'Block', 'CriticalCheck', 'Channel', 'Icon', 'Key',
+            'CasterStat', 'ExtraStatSource', 'ExtraStatRate',
+            'ValueType', 'Uses',
+            # 展示辅助
+            'DescParamId',
+        }
         for ef in effects:
-            item = {'Type': ef.get('Type')}
-            if 'ApplyFrame' in ef:
-                item['ApplyFrame'] = ef['ApplyFrame']
-            if 'Duration' in ef:
-                item['Duration'] = ef['Duration']
-            if 'Scale' in ef:
-                item['Scale'] = ef['Scale']
-            if 'Hits' in ef:
-                item['Hits'] = ef['Hits']
-            if 'Target' in ef:
-                item['Target'] = ef['Target']
-            if 'Stat' in ef:
-                item['Stat'] = ef['Stat']
-            if 'Value' in ef:
-                item['Value'] = ef['Value']
-            if 'Period' in ef:
-                item['Period'] = ef['Period']
-            if 'SummonId' in ef:
-                item['SummonId'] = ef['SummonId']
-            if 'Chance' in ef:
-                item['Chance'] = ef['Chance']
-            if 'Condition' in ef:
-                item['Condition'] = ef['Condition']
-            if 'StackLabel' in ef:
-                item['StackLabel'] = ef['StackLabel']
-            if 'StackSame' in ef:
-                item['StackSame'] = ef['StackSame']
+            item = {k: v for k, v in ef.items() if k in keep_keys}
             cleaned.append(item)
         return cleaned
 
