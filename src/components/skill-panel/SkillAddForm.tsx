@@ -1,5 +1,7 @@
 import type { DragEvent } from 'react'
 import type { SkillBlock } from '../../types/timeline'
+import type { BulletType } from '../../types/student'
+import { SkillIcon } from './SkillIcon'
 import { useI18n, tpl } from '../../i18n'
 
 interface SkillAddFormProps {
@@ -9,6 +11,9 @@ interface SkillAddFormProps {
   duration: number
   applyFrame: number
   studentId?: number
+  targetId?: number
+  icon?: string
+  bulletType?: BulletType
   triggerInfo?: string
   onAdd: (name: string) => void
 }
@@ -21,7 +26,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export const DRAG_SKILL_KEY = 'application/x-skill-block'
 
-export function SkillAddForm({ label, skillName, cost, duration, applyFrame, studentId, triggerInfo, onAdd }: SkillAddFormProps) {
+export function SkillAddForm({ label, skillName, cost, duration, applyFrame, studentId, targetId, icon, bulletType, triggerInfo, onAdd }: SkillAddFormProps) {
   const { t } = useI18n()
   const colorClass = TYPE_COLORS[label.toLowerCase()] || 'border-l-gray-500'
   const isDraggable = skillName !== t.skill.no_skill && (label === 'EX' || label === 'NS')
@@ -31,7 +36,8 @@ export function SkillAddForm({ label, skillName, cost, duration, applyFrame, stu
       type: label.toLowerCase() as SkillBlock['type'],
       name: skillName,
       startFrame: 0,
-      studentId,
+      studentId: studentId ?? 0,
+      targetId,
     }
     e.dataTransfer.setData(DRAG_SKILL_KEY, JSON.stringify(data))
     e.dataTransfer.effectAllowed = 'copyMove'
@@ -41,11 +47,13 @@ export function SkillAddForm({ label, skillName, cost, duration, applyFrame, stu
     <div
       draggable={isDraggable}
       onDragStart={isDraggable ? handleDragStart : undefined}
-      className={`text-xs border-l-2 ${colorClass} pl-2 py-1 mb-1 last:mb-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-white/5' : ''
-        }`}
+      className={`text-xs border-l-2 ${colorClass} pl-2 py-1 mb-1 last:mb-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-white/5' : ''}`}
     >
       <div className="flex items-center justify-between mb-0.5">
         <div className="flex items-center gap-1.5 min-w-0">
+          {icon && bulletType && (
+            <SkillIcon icon={icon} bulletType={bulletType} size={22} />
+          )}
           <span className="font-semibold text-gray-300 uppercase shrink-0">{label}</span>
           <span className="text-gray-400 truncate">{skillName === t.skill.no_skill ? t.skill.no_skill : skillName}</span>
         </div>

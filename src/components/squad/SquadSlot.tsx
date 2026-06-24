@@ -22,14 +22,14 @@ export function SquadSlotComponent({ slotIndex }: SquadSlotProps) {
 
   if (slot.student && slot.locked) {
     return (
-      <div className="relative bg-gray-700 rounded p-2 border border-gray-600 group">
+      <div className="relative rounded p-2 border group" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-[10px] shrink-0">
             {slot.student.Name.charAt(0)}
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-200 truncate">{slot.student.Name}</div>
-            <div className="text-[9px] text-gray-500 truncate">
+            <div className="text-xs truncate" style={{ color: 'var(--text-primary)' }}>{slot.student.Name}</div>
+            <div className="text-[9px] truncate" style={{ color: 'var(--text-muted)' }}>
               {slot.student.Position} · {slot.student.BulletType}
             </div>
           </div>
@@ -52,7 +52,7 @@ export function SquadSlotComponent({ slotIndex }: SquadSlotProps) {
     <>
       <button
         onClick={() => setShowDialog(true)}
-        className="w-full bg-gray-700/50 border border-dashed border-gray-600 rounded p-2 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-300 transition-colors text-left"
+        className="w-full border border-dashed rounded p-2 text-xs transition-colors text-left" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
       >
         {slot.label}
       </button>

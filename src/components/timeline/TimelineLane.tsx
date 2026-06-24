@@ -3,6 +3,7 @@ import type { DragEvent } from 'react'
 import type { StudentLane, SkillBlock } from '../../types/timeline'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { DRAG_SKILL_KEY } from '../skill-panel/SkillAddForm'
+import { studentSkillStyles } from '../../utils/studentColors'
 import { useI18n } from '../../i18n'
 
 /** 用于内部拖拽移动的 dataTransfer 键名 */
@@ -15,26 +16,26 @@ interface TimelineLaneProps {
 
 const LANE_HEIGHT = 48
 
-/** 技能块在时间轴上的颜色配置 */
-const SKILL_COLORS: Record<SkillBlock['type'], { pre: string; active: string; after: string; label: string }> = {
-  ex: {
-    pre: 'bg-blue-500/30 border-l border-blue-400',
-    active: 'bg-blue-600/60',
-    after: 'bg-blue-400/15 border-r border-dashed border-blue-400/40',
-    label: 'text-blue-200',
-  },
-  ns: {
-    pre: 'bg-emerald-500/30 border-l border-emerald-400',
-    active: 'bg-emerald-600/60',
-    after: 'bg-emerald-400/15 border-r border-dashed border-emerald-400/40',
-    label: 'text-emerald-200',
-  },
-  ss: {
-    pre: 'bg-amber-500/30 border-l border-amber-400',
-    active: 'bg-amber-600/60',
-    after: 'bg-amber-400/15 border-r border-dashed border-amber-400/40',
-    label: 'text-amber-200',
-  },
+/** 技能类型 → 透明度倍率（EX=1, NS=0.75, SS=0.55） */
+const TYPE_OPACITY: Record<SkillBlock['type'], number> = {
+  ex: 1,
+  ns: 0.75,
+  ss: 0.55,
+}
+
+/** 从 SkillBlock + Student 提取 Effects 数组 */
+function getEffects(skill: SkillBlock, student: NonNullable<StudentLane['student']>) {
+  if (skill.type === 'ex') return student.Skills.E.Effects
+  if (skill.type === 'ns') {
+    const pub = student.HasGear ? student.Skills.G : student.Skills.P
+    return pub.Effects
+  }
+  return student.Skills.EP.Effects
+}
+
+/** 判断技能是否含伤害效果 */
+function isDamageSkill(skill: SkillBlock, student: NonNullable<StudentLane['student']>): boolean {
+  return getEffects(skill, student).some((ef) => ef.Type === 'Damage')
 }
 
 const BLOCK_HEIGHT = 16
@@ -84,24 +85,16 @@ function msToFrames(ms: number): number {
 
 /** 从 SkillBlock + Student 推导三段式展示参数 */
 function getSkillSegments(skill: SkillBlock, student: NonNullable<StudentLane['student']>): SkillSegments {
-  // ── 获取技能基础数据 ──
   let animDuration = 60
-  let effects: typeof student.Skills.E.Effects = []
 
   if (skill.type === 'ex') {
-    const ex = student.Skills.E
-    animDuration = ex.Duration
-    effects = ex.Effects
+    animDuration = student.Skills.E.Duration
   } else if (skill.type === 'ns') {
-    const hasGear = student.HasGear
-    const pub = hasGear ? student.Skills.G : student.Skills.P
+    const pub = student.HasGear ? student.Skills.G : student.Skills.P
     animDuration = pub.Duration || 60
-    effects = pub.Effects
-  } else if (skill.type === 'ss') {
-    const ep = student.Skills.EP
-    animDuration = 0
-    effects = ep.Effects
   }
+
+  const effects = getEffects(skill, student)
 
   // ── 前摇：取最早生效帧 ──
   const applyFrames = effects
@@ -198,11 +191,11 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
     e.preventDefault()
     setDragOverFrame(null)
 
-    // 计算技能足迹
-    const getFootprint = (s: SkillBlock) => {
-      const segs = getSkillSegments(s, student!)
-      return segs.preCast + Math.max(segs.active, segs.afterEffect)
-    }
+  // 计算技能足迹（仅动画帧，不含后效）
+  const getFootprint = (s: SkillBlock) => {
+    const segs = getSkillSegments(s, student!)
+    return segs.preCast + segs.active
+  }
 
     // 构建现有技能区间
     const buildRanges = (excludeIndex?: number): SkillRange[] =>
@@ -286,11 +279,11 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
 
   return (
     <div
-      className="flex border-b border-gray-800 last:border-b-0"
-      style={{ height: LANE_HEIGHT }}
+      className="flex border-b last:border-b-0"
+      style={{ height: LANE_HEIGHT, borderColor: 'var(--border-light)' }}
     >
       {/* 左侧固定标签 */}
-      <div className="sticky left-0 z-10 flex items-center gap-2 px-3 bg-gray-900 border-r border-gray-700 shrink-0 w-28">
+      <div className="sticky left-0 z-10 flex items-center gap-2 px-3 border-r shrink-0 w-36" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
         <div
           className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 ${student ? 'bg-gray-700 text-gray-300' : 'bg-gray-800 text-gray-600'
             }`}
@@ -298,8 +291,14 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
           {student ? student.Name.charAt(0) : '?'}
         </div>
         <div className="min-w-0">
-          <div className={`text-xs font-medium leading-tight ${student ? 'text-gray-200' : 'text-gray-600'}`}>
-            {label}
+          <div className="text-xs leading-tight">
+            {student ? (
+              <span className={`font-game text-xs ${label.startsWith('STRIKER') ? 'text-red-500' : 'text-blue-400'}`}>
+                {label}
+              </span>
+            ) : (
+              <span className="font-game text-[11px] text-gray-600">{label}</span>
+            )}
           </div>
           {student && (
             <div className="text-[9px] text-gray-500 leading-tight truncate">
@@ -322,22 +321,20 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
         {student && skills.map((skill, i) => {
           const x = skill.startFrame * pxPerFrame
 
-          // 从学生技能数据推导三段参数
           const segs = getSkillSegments(skill, student)
           const preW = segs.preCast * pxPerFrame
           const activeW = segs.active * pxPerFrame
-          const afterW = segs.afterEffect * pxPerFrame
-          const colors = SKILL_COLORS[skill.type]
+          const op = TYPE_OPACITY[skill.type]
+          const damage = isDamageSkill(skill, student)
+          const st = studentSkillStyles(slotIndex, op, damage)
           const row = skillRows[i] ?? 0
 
-          // 垂直位置
           const topOffset = totalRows <= 1
             ? '50%'
             : `${((row + 0.5) / totalRows) * 100}%`
 
           return (
             <div key={i}>
-              {/* ── 主技能块：前摇 + 生效 ── */}
               <div
                 draggable
                 onDragStart={(e) => handleSkillDragStart(e, i)}
@@ -352,20 +349,18 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
               >
                 {/* 前摇段 */}
                 <div
-                  className={colors.pre}
-                  style={{ width: preW, height: '100%', flexShrink: 0 }}
+                  style={{ ...st.preStyle, width: preW, height: '100%', flexShrink: 0 }}
                 />
                 {/* 生效段 */}
                 <div
-                  className={colors.active}
-                  style={{ width: activeW, height: '100%', flexShrink: 0 }}
+                  style={{ ...st.activeStyle, width: activeW, height: '100%', flexShrink: 0 }}
                 />
-                {/* 标签 */}
+                {/* 类型标记 */}
                 <span
-                  className={`absolute text-[10px] whitespace-nowrap pl-1 pointer-events-none ${colors.label}`}
-                  style={{ left: 2, top: -14 }}
+                  className="absolute text-[8px] font-bold text-white/50 pointer-events-none"
+                  style={{ left: preW + 2, top: 1 }}
                 >
-                  {skill.name}
+                  {skill.type.toUpperCase()}
                 </span>
                 {/* 删除按钮 */}
                 <button
@@ -378,21 +373,6 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
                   ×
                 </button>
               </div>
-
-              {/* ── 后效条：从 ApplyFrame 位置开始，薄条在下层 ── */}
-              {afterW > 0 && (
-                <div
-                  className={`absolute z-10 pointer-events-none ${colors.after}`}
-                  style={{
-                    left: x + preW,
-                    top: topOffset,
-                    transform: 'translateY(6px)',
-                    width: afterW,
-                    height: 4,
-                    borderRadius: '0 2px 2px 0',
-                  }}
-                />
-              )}
             </div>
           )
         })}

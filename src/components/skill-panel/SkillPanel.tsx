@@ -13,11 +13,11 @@ export function SkillPanel() {
   )
 
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
+    <div className="rounded-lg p-3 border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
       <h2 className="text-sm font-semibold text-gray-200 mb-2">{t.skill.title}</h2>
 
       {assignedStudents.length === 0 ? (
-        <p className="text-[11px] text-gray-500 text-center py-4">
+        <p className="text-[11px] text-center py-4" style={{ color: 'var(--text-muted)' }}>
           {t.skill.empty}
         </p>
       ) : (

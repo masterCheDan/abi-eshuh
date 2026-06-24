@@ -13,7 +13,7 @@ export function SquadPanel() {
   const supportSlots = slots.filter((s) => s.slotType === 'Support')
 
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
+    <div className="rounded-lg p-3 border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-200">{t.squad.title}</h2>
         <select
@@ -27,7 +27,9 @@ export function SquadPanel() {
       </div>
 
       <div className="mb-2">
-        <div className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">{t.squad.front}</div>
+        <div className="mb-1">
+          <span className="font-game text-sm text-red-500 tracking-widest">{t.squad.front}</span>
+        </div>
         <div className="grid grid-cols-2 gap-1.5">
           {mainSlots.map((slot) => (
             <SquadSlotComponent key={slot.index} slotIndex={slot.index} />
@@ -36,7 +38,9 @@ export function SquadPanel() {
       </div>
 
       <div>
-        <div className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">{t.squad.back}</div>
+        <div className="mb-1">
+          <span className="font-game text-sm text-blue-400 tracking-widest">{t.squad.back}</span>
+        </div>
         <div className="grid grid-cols-2 gap-1.5">
           {supportSlots.map((slot) => (
             <SquadSlotComponent key={slot.index} slotIndex={slot.index} />

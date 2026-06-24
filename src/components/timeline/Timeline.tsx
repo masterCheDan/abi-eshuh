@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { TimelineLane } from './TimelineLane'
+import { BuffTrack } from './BuffTrack'
 import { TimelineRuler } from './TimelineRuler'
-import { useI18n } from '../../i18n'
 
 const BASE_PX_PER_FRAME = 2
 const ZOOM_STEP = 0.25
@@ -10,7 +10,6 @@ const MIN_ZOOM = 0.5
 const MAX_ZOOM = 8
 
 export function Timeline() {
-  const { t } = useI18n()
   const { lanes, totalFrames } = useTimelineStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -35,8 +34,8 @@ export function Timeline() {
   }, [])
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1 border-b border-gray-700 bg-gray-800/50 shrink-0">
+    <div className="flex flex-col h-full rounded-lg overflow-hidden border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <span className="text-[10px] text-gray-500">滚轮缩放</span>
         <div className="flex items-center gap-1">
           <button
@@ -63,11 +62,16 @@ export function Timeline() {
           <TimelineRuler totalFrames={totalFrames} pxPerFrame={pxPerFrame} />
 
           {lanes.map((lane) => (
-            <TimelineLane
-              key={lane.slotIndex}
-              lane={lane}
-              pxPerFrame={pxPerFrame}
-            />
+            <div key={lane.slotIndex}>
+              <TimelineLane
+                lane={lane}
+                pxPerFrame={pxPerFrame}
+              />
+              <BuffTrack
+                lane={lane}
+                pxPerFrame={pxPerFrame}
+              />
+            </div>
           ))}
         </div>
       </div>

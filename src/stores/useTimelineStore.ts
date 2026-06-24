@@ -13,7 +13,7 @@ function createEmptyLanes(mode: SquadMode): StudentLane[] {
   for (let i = 0; i < mainCount; i++) {
     lanes.push({
       slotIndex: index++,
-      label: `前排 ${i + 1}`,
+      label: `STRIKER ${i + 1}`,
       student: null,
       studentId: null,
       skills: [],
@@ -22,7 +22,7 @@ function createEmptyLanes(mode: SquadMode): StudentLane[] {
   for (let i = 0; i < supportCount; i++) {
     lanes.push({
       slotIndex: index++,
-      label: `后排 ${i + 1}`,
+      label: `SPECIAL ${i + 1}`,
       student: null,
       studentId: null,
       skills: [],

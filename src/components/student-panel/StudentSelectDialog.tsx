@@ -37,9 +37,9 @@ export function StudentSelectDialog({
       onClick={handleOverlayClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
     >
-      <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-[680px] h-[90vh] max-h-[750px] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-          <h3 className="text-sm font-semibold text-gray-200">{title}</h3>
+      <div className="rounded-xl border shadow-2xl w-[680px] h-[90vh] max-h-[750px] flex flex-col" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h3>
           <button
             onClick={onClose}
             className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-xs text-gray-400"

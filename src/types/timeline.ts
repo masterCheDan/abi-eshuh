@@ -8,8 +8,10 @@ export interface SkillBlock {
   name: string
   /** 在时间轴上的施放时间点（帧） */
   startFrame: number
-  /** 所属学生 ID */
+  /** 释放学生 ID */
   studentId: number
+  /** 目标学生 ID（默认等于 studentId，表示自身） */
+  targetId?: number
 }
 
 /** 时间轴上的一个学生轨道 */

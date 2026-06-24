@@ -1,5 +1,82 @@
 @import "tailwindcss";
 
+/* ====== 主题 CSS 变量（默认暗色，.light 覆盖为亮色）====== */
+
+:root {
+  --bg-app: #111827;
+  --bg-surface: #1f2937;
+  --bg-surface-alt: #374151;
+  --bg-hover: rgba(255,255,255,0.05);
+  --border: #374151;
+  --border-light: #1f2937;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  color-scheme: dark;
+}
+
+.light {
+  --bg-app: #f3f4f6;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #f9fafb;
+  --bg-hover: rgba(0,0,0,0.04);
+  --border: #d1d5db;
+  --border-light: #e5e7eb;
+  --text-primary: #0f172a;
+  --text-secondary: #1f2937;
+  --text-muted: #374151;
+  color-scheme: light;
+}
+
+/* 亮色主题下，Tailwind 灰色文字自动加深 */
+.light .text-gray-300,
+.light .text-gray-400 { color: #374151; }
+.light .text-gray-500 { color: #4b5563; }
+.light .text-gray-600 { color: #6b7280; }
+.light .bg-gray-600 { background-color: #d1d5db; }
+.light .bg-gray-700 { background-color: #e5e7eb; }
+.light .bg-gray-800 { background-color: #f3f4f6; }
+.light .bg-gray-900 { background-color: #ffffff; }
+.light .bg-gray-700\/50 { background-color: rgba(229, 231, 235, 0.5); }
+.light .bg-gray-900\/50 { background-color: rgba(255, 255, 255, 0.5); }
+.light .border-gray-600 { border-color: #9ca3af; }
+.light .border-gray-700 { border-color: #d1d5db; }
+.light .border-gray-800 { border-color: #e5e7eb; }
+.light .text-gray-200 { color: #1f2937; }
+.light .bg-gray-800\/40 { background-color: rgba(243, 244, 246, 0.4); }
+.light .bg-gray-800\/50 { background-color: rgba(243, 244, 246, 0.5); }
+.light .bg-gray-800\/30 { background-color: rgba(243, 244, 246, 0.3); }
+.light .border-gray-700\/60 { border-color: rgba(209, 213, 219, 0.6); }
+.light .border-gray-800\/50 { border-color: rgba(229, 231, 235, 0.5); }
+
+/* 滚动条跟随主题 */
+:root {
+  scrollbar-color: #4b5563 #1f2937;
+}
+.light {
+  scrollbar-color: #9ca3af #e5e7eb;
+}
+
+/* WebKit 滚动条（Chrome/Edge） */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-app); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+@font-face {
+  font-family: 'BA-Game';
+  src: url('/fonts/NEXONFootballGothicBA1.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer utilities {
+  .font-game {
+    font-family: 'BA-Game', sans-serif;
+  }
+}
+
 :root {
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -27,7 +104,7 @@
 
 body {
   margin: 0;
-  background: #111318;
+  background: var(--bg-app);
 }
 
 h1,

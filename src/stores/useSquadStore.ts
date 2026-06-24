@@ -7,10 +7,10 @@ import { useTimelineStore } from './useTimelineStore'
 function createNormalSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `前排 ${i + 1}`, student: null, locked: false })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false })
   }
   for (let i = 0; i < 2; i++) {
-    slots.push({ index: 4 + i, slotType: 'Support', label: `后排 ${i + 1}`, student: null, locked: false })
+    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false })
   }
   return slots
 }
@@ -19,10 +19,10 @@ function createNormalSlots(): SquadSlot[] {
 function createTotalAssaultSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 6; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `前排 ${i + 1}`, student: null, locked: false })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false })
   }
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: 6 + i, slotType: 'Support', label: `后排 ${i + 1}`, student: null, locked: false })
+    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false })
   }
   return slots
 }

@@ -15,11 +15,11 @@ export function TimelineRuler({ totalFrames, pxPerFrame }: TimelineRulerProps) {
 
   return (
     <div
-      className="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 flex shrink-0"
-      style={{ height: 28 }}
+      className="sticky top-0 z-10 flex shrink-0 border-b"
+      style={{ height: 28, background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
-      {/* 与左侧标签等宽的占位（w-28 = 7rem = 112px） */}
-      <div className="w-28 shrink-0 border-r border-gray-700" />
+      {/* 与左侧标签等宽的占位（w-36 = 9rem = 144px） */}
+      <div className="w-36 shrink-0 border-r" style={{ borderColor: 'var(--border)' }} />
 
       {/* 刻度尺区域 */}
       <div style={{ width: totalFrames * pxPerFrame, position: 'relative', height: '100%' }}>
