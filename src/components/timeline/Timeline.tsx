@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { TimelineLane } from './TimelineLane'
 import { BuffTrack } from './BuffTrack'
+import { CostTrack } from './CostTrack'
 import { TimelineRuler } from './TimelineRuler'
 
 const BASE_PX_PER_FRAME = 2
@@ -60,6 +61,7 @@ export function Timeline() {
       <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
         <div style={{ width: totalWidth, minHeight: '100%', paddingBottom: 48 }}>
           <TimelineRuler totalFrames={totalFrames} pxPerFrame={pxPerFrame} />
+          <CostTrack pxPerFrame={pxPerFrame} totalWidth={totalWidth} />
 
           {lanes.map((lane) => (
             <div key={lane.slotIndex}>

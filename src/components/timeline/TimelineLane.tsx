@@ -2,8 +2,11 @@ import { useState, useCallback, useMemo } from 'react'
 import type { DragEvent } from 'react'
 import type { StudentLane, SkillBlock } from '../../types/timeline'
 import { useTimelineStore } from '../../stores/useTimelineStore'
+import { useSquadStore } from '../../stores/useSquadStore'
 import { DRAG_SKILL_KEY } from '../skill-panel/SkillAddForm'
+import { SkillIcon } from '../skill-panel/SkillIcon'
 import { studentSkillStyles } from '../../utils/studentColors'
+import { computeCostTimeline, costAtFrame } from '../../utils/costCalc'
 import { useI18n } from '../../i18n'
 
 /** 用于内部拖拽移动的 dataTransfer 键名 */
@@ -167,6 +170,8 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
   const moveSkillBlock = useTimelineStore((s) => s.moveSkillBlock)
   const removeSkillBlock = useTimelineStore((s) => s.removeSkillBlock)
   const allLanes = useTimelineStore((s) => s.lanes)
+  const squadMode = useSquadStore((s) => s.config.mode)
+  const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
   const [dragOverFrame, setDragOverFrame] = useState<number | null>(null)
 
   const frameFromEvent = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -229,7 +234,19 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
       let frame = snapToNonOverlap(ranges, frameFromEvent(e), footprint)
 
       if (moved.type === 'ex') {
-        while (globalExFrames.has(frame)) frame++
+        // 排除自身后重新计算 Cost（避免被拖卡自己的扣减拦住前移）
+        const lanesWithoutSelf = allLanes.map(l => {
+          if (l.slotIndex !== slotIndex) return l
+          return { ...l, skills: l.skills.filter((_, i) => i !== skillIndex) }
+        })
+        const costWithoutSelf = computeCostTimeline(lanesWithoutSelf, squadMode)
+        const exCost = student!.Skills.E.Cost[0]
+        while (frame <= 5400) {
+          while (globalExFrames.has(frame)) frame++
+          if (frame > 5400 || costAtFrame(costWithoutSelf, frame) >= exCost) break
+          frame++
+        }
+        if (frame > 5400) return
       }
 
       moveSkillBlock(fromSlotIndex, skillIndex, slotIndex, frame)
@@ -255,8 +272,16 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
         .map((s) => ({ start: s.startFrame, end: s.startFrame + getFootprint(s) }))
       let finalFrame = snapToNonOverlap(exRanges, proposedFrame, footprint)
 
-      // 规则2：一帧内最多一个 EX（跨轨道），逐帧后移
-      while (globalExFrames.has(finalFrame)) finalFrame++
+      // 规则2+3：跨轨道 EX 唯一 + COST 充足，合并循环到全部满足
+      {
+        const exCost = student!.Skills.E.Cost[0]
+        while (finalFrame <= 5400) {
+          while (globalExFrames.has(finalFrame)) finalFrame++
+          if (finalFrame > 5400 || costAtFrame(costTimeline, finalFrame) >= exCost) break
+          finalFrame++
+        }
+        if (finalFrame > 5400) return
+      }
 
       // 规则1b：NS/SS 被 EX 挤出 → 推到 EX 之后（同学生）
       const pushedNS = skills
@@ -355,10 +380,19 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
           const damage = isDamageSkill(skill, student)
           const st = studentSkillStyles(slotIndex, op, damage)
           const row = skillRows[i] ?? 0
+          const isEx = skill.type === 'ex'
 
           const topOffset = totalRows <= 1
             ? '50%'
             : `${((row + 0.5) / totalRows) * 100}%`
+
+          const fmt = (f: number) => {
+            const totalSeconds = Math.floor(f / 30)
+            const ms = Math.round((f / 30 - totalSeconds) * 1000)
+            const m = Math.floor(totalSeconds / 60)
+            const s = totalSeconds % 60
+            return `${m}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`
+          }
 
           return (
             <div key={i}>
@@ -399,6 +433,42 @@ export function TimelineLane({ lane, pxPerFrame }: TimelineLaneProps) {
                 >
                   ×
                 </button>
+
+                {/* ── 悬浮详情卡 ── */}
+                <div className="absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block pointer-events-none">
+                  <div className="rounded-lg border shadow-xl p-3 bg-gray-800 border-gray-700 text-gray-200 whitespace-nowrap min-w-[230px]">
+                    {/* 1. 释放者 */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <img src={`/icons/${student.Icon}.webp`} alt="" className="w-7 h-7 rounded-full shrink-0 bg-gray-700" />
+                      <span className="text-sm font-medium text-gray-100">{student.Name}</span>
+                    </div>
+                    {/* 2. 技能 */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <SkillIcon icon={isEx ? student.Skills.E.Icon : ''} bulletType={student.BulletType} size={22} />
+                      <span className="text-xs text-gray-300 truncate">{skill.name}</span>
+                    </div>
+                    <div className="h-px bg-gray-700 my-2" />
+                    {/* 3. 时间 */}
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">释放</span>
+                        <span className="font-mono text-gray-200">{fmt(skill.startFrame)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">生效</span>
+                        <span className="font-mono text-emerald-300">{fmt(skill.startFrame + segs.preCast)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">动画结束</span>
+                        <span className="font-mono text-gray-300">{fmt(skill.startFrame + segs.preCast + segs.active)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">前摇</span>
+                        <span className="font-mono text-gray-400">{segs.preCast}帧</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )

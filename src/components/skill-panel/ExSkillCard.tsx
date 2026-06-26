@@ -4,6 +4,7 @@ import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { SkillIcon } from './SkillIcon'
 import { useI18n } from '../../i18n'
+import { computeCostTimeline, costAtFrame } from '../../utils/costCalc'
 
 interface ExSkillCardProps { student: Student }
 
@@ -25,7 +26,11 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const squadStudents = useMemo(() => slots.filter((s) => s.student).map((s) => s.student!), [slots])
   const strikers = useMemo(() => squadStudents.filter((s) => s.SquadType === 'Main'), [squadStudents])
   const allLanes = useTimelineStore((s) => s.lanes)
+  const squadMode = useSquadStore((s) => s.config.mode)
   const ex = student.Skills.E
+
+  /** Cost 时间线（用于查询任意时点的 Cost） */
+  const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
 
   /* ── 技能分类 ── */
   type TargetMode = 'none' | 'self' | 'boss' | 'striker' | 'any'
@@ -80,31 +85,28 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     return String(Math.max(lo, Math.min(hi, n)))
   }
 
-  /* ── 帧 → 毫秒 互推 ── */
-  const syncMsFromParts = (mn: string, sc: string, fr: string) => {
-    const tf = (parseInt(mn) || 0) * 1800 + (parseInt(sc) || 0) * 30 + (parseInt(fr) || 0)
-    setMs(String(Math.round(Math.max(0, tf) * 1000 / 30)))
+  /* ── 帧⇄毫秒 仅互推秒内部分 ── */
+  const syncMsFromFrame = (fr: number) => {
+    setMs(String(Math.round(Math.max(0, Math.min(29, fr)) * 1000 / 30)))
   }
-  const applyMs = (ms: string) => {
-    const n = parseInt(ms) || 0
-    setMs(String(n))
-    if (ms) {
-      const tf = Math.round(n * 30 / 1000)
-      const tsec = Math.floor(tf / 30)
-      setMin(String(Math.floor(tsec / 60)))
-      setSec(String(tsec % 60))
-      setFrame(String(tf % 30))
-    }
+  const syncFrameFromMs = (ms: number) => {
+    const f = Math.round(Math.max(0, Math.min(999, ms)) * 30 / 1000)
+    setFrame(String(Math.min(29, f)))
   }
 
   /* ── 安全值 ── */
   const min = parseInt(vMin) || 0
   const sec = Math.min(59, parseInt(vSec) || 0)
   const frame = Math.min(29, parseInt(vFrame) || 0)
-  const msVal = parseInt(vMs) || 0
+  const msVal = Math.min(999, parseInt(vMs) || 0)
   const totalFrames = min * 1800 + sec * 30 + frame
 
-  // ── 合法性检测：当前时间是否与已有技能冲突 ──
+  // ── Cost 充足性检测 ──
+  const skillCost = ex.Cost[0]
+  const availableCost = costAtFrame(costTimeline, totalFrames)
+  const hasEnoughCost = availableCost >= skillCost
+
+  // ── 合法性检测：时间冲突 + Cost 充足 ──
   const isTimeValid = useMemo(() => {
     if (slotIndex < 0) return false
     const footprint = ex.Duration
@@ -132,7 +134,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     return true
   }, [totalFrames, ex.Duration, slotIndex, allLanes])
 
-  const canAct = selected && isTimeValid
+  const canAct = selected && isTimeValid && hasEnoughCost
 
   const handleAdd = () => {
     if (!canAct) return
@@ -159,19 +161,19 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
       {/* 时间输入：一行 a m b s c ms / d f */}
       <div className="flex justify-center items-baseline gap-1 mb-1.5 flex-wrap text-sm font-mono">
         <input value={vMin}
-          onChange={(e) => { const v = digits(e.target.value); setMin(v); syncMsFromParts(v, vSec, vFrame) }}
-          onBlur={() => setMin((v) => { const c = clamp(v, 0, 5); syncMsFromParts(c, vSec, vFrame); return c })}
+          onChange={(e) => setMin(digits(e.target.value))}
+          onBlur={() => setMin((v) => clamp(v, 0, 5))}
           className="w-8 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>m</span>
 
         <input value={vSec}
-          onChange={(e) => { const v = digits(e.target.value); setSec(v); syncMsFromParts(vMin, v, vFrame) }}
-          onBlur={() => setSec((v) => { const c = clamp(v, 0, 59); syncMsFromParts(vMin, c, vFrame); return c })}
+          onChange={(e) => setSec(digits(e.target.value))}
+          onBlur={() => setSec((v) => clamp(v, 0, 59))}
           className="w-8 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>s</span>
 
         <input value={vMs}
-          onChange={(e) => { const v = digits(e.target.value); applyMs(v) }}
+          onChange={(e) => { const v = digits(e.target.value); setMs(v); syncFrameFromMs(parseInt(v) || 0) }}
           onBlur={() => setMs((v) => clamp(v, 0, 999))}
           className="w-10 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>ms</span>
@@ -179,7 +181,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
         <span className="text-xs mx-0.5" style={{ color: 'var(--text-muted)' }}>/</span>
 
         <input value={vFrame}
-          onChange={(e) => { const v = digits(e.target.value); setFrame(v); syncMsFromParts(vMin, vSec, v) }}
+          onChange={(e) => { const v = digits(e.target.value); setFrame(v); syncMsFromFrame(parseInt(v) || 0) }}
           onBlur={() => setFrame((v) => clamp(v, 0, 29))}
           className="w-8 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>f</span>
@@ -230,17 +232,22 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
         {!isTimeValid && !isNaN(totalFrames) && (
           <span className="text-[10px] text-red-400">时间冲突</span>
         )}
+        {isTimeValid && !hasEnoughCost && !isNaN(totalFrames) && (
+          <span className="text-[10px] text-red-400">
+            COST不足 ({skillCost}/{availableCost.toFixed(1)})
+          </span>
+        )}
         <div className="flex-1" />
         <button
-          draggable={canAct}
-          onDragStart={canAct ? (e) => {
+          draggable={selected}
+          onDragStart={selected ? (e) => {
             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
               type: 'ex', name: ex.Name, startFrame: 0,
               studentId: student.Id, targetId: effectiveTargetId(),
             }))
             e.dataTransfer.effectAllowed = 'copyMove'
           } : undefined}
-          className={`text-xs px-2 py-0.5 rounded border ${canAct ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-40'}`}
+          className={`text-xs px-2 py-0.5 rounded border ${selected ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-40'}`}
           style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
         >
           ⠿ 拖拽
