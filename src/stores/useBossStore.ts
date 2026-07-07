@@ -38,7 +38,7 @@ export const useBossStore = create<BossState>((set, get) => ({
         if (get().bosses) return
         set({ loading: true })
         try {
-            const res = await fetch('/data/bosses.min.json')
+            const res = await fetch(`${import.meta.env.BASE_URL}data/bosses.min.json`)
             if (!res.ok) throw new Error(`加载失败: ${res.status}`)
             const data: Record<string, BossData> = await res.json()
             set({ bosses: data, loading: false })

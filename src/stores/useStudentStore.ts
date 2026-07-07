@@ -31,7 +31,7 @@ export const useStudentStore = create<StudentState>((set, get) => ({
     set({ loading: true, error: null })
 
     try {
-      const response = await fetch('/data/students.min.json')
+      const response = await fetch(`${import.meta.env.BASE_URL}data/students.min.json`)
       if (!response.ok) {
         throw new Error(`加载失败: ${response.status}`)
       }
