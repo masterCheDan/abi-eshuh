@@ -22,3 +22,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude local settings (keep launch.json for shared dev server config)
+.claude/*
+!.claude/launch.json
+
+# Scratch / analysis files
+string_target_students.txt
+
+# Env files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache / build artifacts
+*.tsbuildinfo
+.eslintcache
+.cache/
+*.orig
