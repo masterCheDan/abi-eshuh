@@ -12,6 +12,23 @@ export interface SkillBlock {
   studentId: number
   /** 目标学生 ID（默认等于 studentId，表示自身） */
   targetId?: number
+  /**
+   * 实际 COST 消耗（可选）。
+   * ExtraSkills（形态切换后的后续技能）Cost 为 0。
+   * 未指定时退回 student.Skills.E.Cost[0]。
+   */
+  skillCost?: number
+  /**
+   * 动画时长（帧），可选。
+   * ExtraSkills 使用自身 Duration 而非基础 EX 技能时长。
+   */
+  skillDuration?: number
+  /**
+   * 人工校准偏移（帧）。只对 NS/SS 生效。
+   * 正值 = 延迟 N 帧触发，负值 = 提前 N 帧触发。
+   * 设置后，块上显示锁/齿轮图标。
+   */
+  overrideOffset?: number
 }
 
 /** 时间轴上的一个学生轨道 */

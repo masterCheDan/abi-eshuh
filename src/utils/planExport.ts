@@ -4,6 +4,7 @@
 
 import type { SkillBlock, StudentLane } from '../types/timeline'
 import type { Student } from '../types/student'
+import { computeCostTimeline, COST_SCALE } from './costCalc'
 
 /* ── 帧 → m:ss.ms ── */
 function formatTime(totalFrames: number): string {
@@ -58,8 +59,56 @@ export function exportNaturalLanguage(lanes: StudentLane[]): string {
     for (const ev of events) {
         const time = formatTime(ev.frame)
         const targetId = ev.skill.targetId ?? ev.skill.studentId
-        const targetName = names.get(targetId) ?? `ID:${targetId}`
+        const isSelf = targetId === ev.skill.studentId
+        const isBoss = targetId === -1
+        const targetName = isBoss ? 'Boss' : isSelf ? '自身' : (names.get(targetId) ?? `ID:${targetId}`)
         lines.push(`${time} ${ev.caster.Name} -> ${targetName}`)
+    }
+
+    return lines.join('\n')
+}
+
+/* ══════════════════════════════════════════════════════
+   自然语言导出 Mode B（基于费用）
+   ══════════════════════════════════════════════════════ */
+
+/** 计算 Cost 时间线并导出基于费用的文本 */
+export function exportCostBased(lanes: StudentLane[], mode: 'normal' | 'total_assault' = 'normal'): string {
+    const timeline = computeCostTimeline(lanes, mode)
+
+    const lines: string[] = []
+
+    // 编队
+    lines.push('[编队]')
+    const strikers: string[] = []
+    const specials: string[] = []
+    for (const l of lanes) {
+        if (!l.student) continue
+        if (l.student.SquadType === 'Main') strikers.push(l.student.Name)
+        else specials.push(l.student.Name)
+    }
+    if (strikers.length) lines.push(`striker:${strikers.join(',')}`)
+    if (specials.length) lines.push(`special:${specials.join(',')}`)
+
+    // 轴
+    lines.push('')
+    lines.push('[轴]')
+    const { events, names } = collectExEvents(lanes)
+
+    // 查 Cost 工具
+    const costAt = (frame: number): number => {
+        let lo = 0, hi = timeline.length - 1
+        while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (timeline[mid].frame <= frame) lo = mid; else hi = mid - 1 }
+        return timeline[lo]?.cost ?? 0
+    }
+
+    for (const ev of events) {
+        const cost = costAt(ev.frame)
+        const targetId = ev.skill.targetId ?? ev.skill.studentId
+        const isSelf = targetId === ev.skill.studentId
+        const isBoss = targetId === -1
+        const targetName = isBoss ? 'Boss' : isSelf ? '自身' : (names.get(targetId) ?? `ID:${targetId}`)
+        lines.push(`[${(cost / COST_SCALE).toFixed(2)} Cost] ${ev.caster.Name} -> ${targetName}`)
     }
 
     return lines.join('\n')

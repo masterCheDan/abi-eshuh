@@ -1,4 +1,82 @@
-export const zh = {
+export interface LanguagePack {
+  app: {
+    title: string
+  }
+  squad: {
+    title: string
+    normal: string
+    total_assault: string
+    front: string
+    back: string
+    front_label: string
+    back_label: string
+    select_front: string
+    select_back: string
+    search_placeholder_front: string
+    search_placeholder_back: string
+    search_placeholder: string
+    no_results: string
+    added: string
+  }
+  skill: {
+    title: string
+    empty: string
+    cost: string
+    anim_frames: string
+    apply_frames: string
+    permanent: string
+    add: string
+    no_skill: string
+    collapse: string
+    expand: string
+    start_frame: string
+    frame: string
+    target: string
+    target_self: string
+    target_none: string
+  }
+  timeline: {
+    empty_hint: string
+    zoom_hint: string
+    export: string
+    export_natural: string
+    export_cost: string
+    export_share: string
+    export_copy: string
+    export_download: string
+    export_copied: string
+    import_title: string
+    import_placeholder: string
+    import_btn: string
+  }
+  event_log: {
+    title: string
+    empty: string
+    col_time: string
+    col_frame: string
+    col_sec_frame: string
+    col_caster: string
+    col_target: string
+    target_boss: string
+  }
+  sim_error: {
+    panel_title: string
+    cost_exceeded: string
+    out_of_window: string
+    cooldown: string
+    invalid_target: string
+    cost_exceeded_msg: string
+    out_of_window_msg: string
+  }
+  search: {
+    found: string
+    list_all: string
+    available: string
+    showing: string
+  }
+}
+
+export const zh: LanguagePack = {
   app: {
     title: 'Abi-Eshuh — 碧蓝档案排轴工具',
   },
@@ -39,7 +117,8 @@ export const zh = {
     empty_hint: '拖拽技能到此处',
     zoom_hint: 'Ctrl+滚轮缩放',
     export: '导出',
-    export_natural: '自然语言',
+    export_natural: '自然语言 (时间)',
+    export_cost: '自然语言 (费用)',
     export_share: '分享码',
     export_copy: '复制',
     export_download: '下载',
@@ -58,9 +137,19 @@ export const zh = {
     col_target: '目标',
     target_boss: 'Boss',
   },
+  sim_error: {
+    panel_title: '问题',
+    cost_exceeded: 'COST 不足',
+    out_of_window: '牌序不可接受',
+    cooldown: 'CD 冲突',
+    invalid_target: '目标无效',
+    cost_exceeded_msg: '帧{frame}: Cost不足',
+    out_of_window_msg: '帧{frame}: 不在手牌窗口中',
+  },
   search: {
     found: '找到 {n} 名学生',
+    list_all: '全部学生',
+    available: '可选 ({n})',
+    showing: '显示 {shown} / {total} 条',
   },
 } as const
-
-export type LanguagePack = typeof zh

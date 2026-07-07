@@ -38,8 +38,8 @@ export interface SkillEffect {
   Scale?: number[]
   /** 击中次数 */
   Hits?: number[]
-  /** 目标类型 */
-  Target?: string[]
+  /** 目标类型 — 可为单字符串或字符串数组 */
+  Target?: string | string[]
   /** 影响属性 */
   Stat?: string
   /** 属性值（各等级） */
@@ -51,7 +51,7 @@ export interface SkillEffect {
   /** 触发概率 (10000 = 100%) */
   Chance?: number
   /** 触发条件描述 */
-  Condition?: string
+  Condition?: unknown
   /** 叠层标签 */
   StackLabel?: string
   StackSame?: boolean
@@ -86,6 +86,23 @@ export interface ExSkill {
   Parameters: string[][]
   Cost: number[]
   /** 动画时长（帧） */
+  Duration: number
+  Range: number
+  Radius?: { Type: string; Radius: number }[]
+  Icon: string
+  Effects: SkillEffect[]
+  /** 形态切换后的替代技能 */
+  ExtraSkills?: ExtraSkill[]
+}
+
+/** 变形后的 EX 技能（结构同 ExSkill, 独立 Cost/Duration, 部分学生 Cost/Duration 可能为空） */
+export interface ExtraSkill {
+  /** 技能唯一 ID（部分学生有多个变形技能） */
+  Id?: string
+  Name: string
+  Desc: string
+  Parameters: string[][]
+  Cost: number[]
   Duration: number
   Range: number
   Radius?: { Type: string; Radius: number }[]

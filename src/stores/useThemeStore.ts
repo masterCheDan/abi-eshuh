@@ -18,7 +18,7 @@ function resolve(mode: ThemeMode): 'light' | 'dark' {
     return mode === 'auto' ? detectSystemTheme() : mode
 }
 
-export const useThemeStore = create<ThemeStore>((set, get) => ({
+export const useThemeStore = create<ThemeStore>((set) => ({
     mode: 'dark',
     resolved: 'dark',
 

@@ -78,6 +78,12 @@ interface BuffBar {
   overridden: boolean
 }
 
+/** 归一化 Target：字符串包裹为数组，undefined → [] */
+function toArray(v: string | string[] | undefined): string[] {
+    if (v === undefined) return []
+    return typeof v === 'string' ? [v] : v
+}
+
 function getEffects(skill: { type: string }, stu: Student): typeof stu.Skills.E.Effects {
     if (skill.type === 'ex') return stu.Skills.E.Effects
     if (skill.type === 'ns') {
@@ -140,25 +146,17 @@ export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
                 const defApply = getDefaultApply(skill, caster)
 
                 for (const ef of effects) {
-                    let durMs = 0
+                    const durMs = (() => {
+                        if (ef.Type === 'Buff' && ef.Duration != null && ef.Duration > 0) return ef.Duration
+                        if (ef.Type === 'Shield' && ef.Duration != null && ef.Duration > 0) return ef.Duration
+                        if (ef.Type === 'Regen' && ef.Duration != null && ef.Duration > 0) return ef.Duration
+                        if (ef.Type === 'CrowdControl' && ef.Scale?.length) return ef.Scale[ef.Scale.length - 1]
+                        if (ef.Type === 'DamageDebuff' && ef.Duration != null && ef.Duration > 0) return ef.Duration
+                        if (ef.Type === 'Summon' && ef.Duration != null && ef.Duration > 0) return ef.Duration
+                        return 0
+                    })()
                     let eType = ef.Type
-
-                    if (ef.Type === 'Buff' && ef.Duration != null && ef.Duration > 0) {
-                        durMs = ef.Duration
-                        if (ef.Target?.includes('Enemy')) eType = 'Debuff'
-                    } else if (ef.Type === 'Shield' && ef.Duration != null && ef.Duration > 0) {
-                        durMs = ef.Duration
-                    } else if (ef.Type === 'Regen' && ef.Duration != null && ef.Duration > 0) {
-                        durMs = ef.Duration
-                    } else if (ef.Type === 'CrowdControl' && ef.Scale?.length) {
-                        durMs = ef.Scale[ef.Scale.length - 1]
-                    } else if (ef.Type === 'DamageDebuff' && ef.Duration != null && ef.Duration > 0) {
-                        durMs = ef.Duration
-                    } else if (ef.Type === 'Summon' && ef.Duration != null && ef.Duration > 0) {
-                        durMs = ef.Duration
-                    } else {
-                        continue
-                    }
+                    if (ef.Type === 'Buff' && toArray(ef.Target).includes('Enemy')) eType = 'Debuff'
 
                     if (durMs > 0) {
                         const applyFrame = ef.ApplyFrame ?? defApply
@@ -280,12 +278,12 @@ export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
                                         <img
                                             src={`/icons/${bar.casterIcon}.webp`}
                                             alt={bar.casterName}
-                                            className="w-8 h-8 rounded-full shrink-0 bg-gray-700"
+                                            className="w-8 h-8 rounded-lg shrink-0 bg-gray-700"
                                         />
                                         <span className="text-sm text-gray-200">
                                             {bar.casterName}
                                         </span>
-                                        <span className="text-[11px] px-1.5 rounded bg-gray-700 text-gray-400">
+                                        <span className="text-xs px-1.5 rounded bg-gray-700 text-gray-400">
                                             {typeUpper}
                                         </span>
                                         {bar.skillIcon && bar.casterBulletType && (

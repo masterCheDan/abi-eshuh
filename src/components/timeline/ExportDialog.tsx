@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useI18n } from '../../i18n'
-import { exportNaturalLanguage, encodeShareCode } from '../../utils/planExport'
+import { exportNaturalLanguage, exportCostBased, encodeShareCode } from '../../utils/planExport'
 
 interface ExportDialogProps {
   onClose: () => void
 }
 
-type ExportMode = 'natural' | 'share'
+type ExportMode = 'natural' | 'natural_cost' | 'share'
 
 export function ExportDialog({ onClose }: ExportDialogProps) {
   const { t } = useI18n()
@@ -29,6 +29,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
 
   const text = useMemo(() => {
     if (mode === 'natural') return exportNaturalLanguage(lanes)
+    if (mode === 'natural_cost') return exportCostBased(lanes)
     const result = encodeShareCode(lanes)
     return result.code
   }, [mode, lanes])
@@ -43,7 +44,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = mode === 'natural' ? 'plan.txt' : 'plan-share.txt'
+    a.download = mode === 'natural_cost' ? 'plan-cost.txt' : mode === 'natural' ? 'plan.txt' : 'plan-share.txt'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -77,6 +78,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
               style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
             >
               <option value="natural">{t.timeline.export_natural}</option>
+              <option value="natural_cost">{t.timeline.export_cost}</option>
               <option value="share">{t.timeline.export_share}</option>
             </select>
             <div className="flex-1" />

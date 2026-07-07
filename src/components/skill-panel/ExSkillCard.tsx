@@ -4,7 +4,7 @@ import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { SkillIcon } from './SkillIcon'
 import { useI18n } from '../../i18n'
-import { computeCostTimeline, costAtFrame } from '../../utils/costCalc'
+import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
 
 interface ExSkillCardProps { student: Student }
 
@@ -32,7 +32,13 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   /** Cost 时间线（用于查询任意时点的 Cost） */
   const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
 
-  /* ── 技能分类 ── */
+  /** 归一化 Target：字符串包裹为数组，undefined → [] */
+function toArray(v: string | string[] | undefined): string[] {
+    if (v === undefined) return []
+    return typeof v === 'string' ? [v] : v
+}
+
+/* ── 技能分类 ── */
   type TargetMode = 'none' | 'self' | 'boss' | 'striker' | 'any'
   const { targetMode, hasTarget } = useMemo(() => {
     const effects = ex.Effects
@@ -41,31 +47,75 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     // 召唤类 → 无目标选择器
     if (types.includes('Summon')) return { targetMode: 'none' as TargetMode, hasTarget: false }
 
-    // 纯自身 Buff/Special（所有效果 Target 均为 Self 或 无 Target）→ 仅自身
-    const allSelf = effects.every((ef) =>
-      ef.Type === 'Summon' || (!ef.Target?.length) || ef.Target.every((t) => t === 'Self')
+    // ── 收集所有显式 Target 值 ──
+    const allExplicit: string[] = []
+    for (const ef of effects) {
+      for (const t of toArray(ef.Target)) {
+        allExplicit.push(t)
+      }
+    }
+    const hasExplicitSelf = allExplicit.includes('Self')
+    const hasExplicitEnemy = allExplicit.includes('Enemy')
+    const hasExplicitAny = allExplicit.includes('Any')
+    const hasExplicitAlly = allExplicit.some(t =>
+      ['Ally', 'AllyMain', 'AllySupport'].includes(t),
     )
-    const onlyBuffOrSpecial = effects.every((ef) => ef.Type === 'Buff' || ef.Type === 'Special' || ef.Type === 'CostChange')
-    if (allSelf && onlyBuffOrSpecial) return { targetMode: 'self' as TargetMode, hasTarget: true }
 
-    // 纯伤害/Debuff/CC/Knockback → 仅 Boss
+    // 0) 空 Effects（纯形态切换）→ 自身，无目标选择器
+    if (effects.length === 0) {
+      return { targetMode: 'self' as TargetMode, hasTarget: false }
+    }
+
+    // 1) 全部显式 Target 均为 Self → 仅自身（无论效果类型）
+    if (allExplicit.length > 0 && allExplicit.every((t) => t === 'Self')) {
+      return { targetMode: 'self' as TargetMode, hasTarget: false }
+    }
+
+    // 2) 全部显式 Target 均为 Enemy → Boss
+    if (allExplicit.length > 0 && allExplicit.every((t) => t === 'Enemy')) {
+      return { targetMode: 'boss' as TargetMode, hasTarget: true }
+    }
+
+    // 3) Any 关键词 → 混合
+    if (hasExplicitAny) {
+      return { targetMode: 'any' as TargetMode, hasTarget: true }
+    }
+
+    // 4) Enemy + Ally 混合 → 混合
+    if (hasExplicitEnemy && hasExplicitAlly) {
+      return { targetMode: 'any' as TargetMode, hasTarget: true }
+    }
+
+    // 5) 仅友方目标（可能含 Self）→ STRIKER
+    if (!hasExplicitEnemy && !hasExplicitAny && hasExplicitAlly) {
+      return { targetMode: 'striker' as TargetMode, hasTarget: true }
+    }
+
+    // 6) 纯敌方目标 → Boss
+    if (hasExplicitEnemy && !hasExplicitAlly && !hasExplicitSelf) {
+      return { targetMode: 'boss' as TargetMode, hasTarget: true }
+    }
+
+    // ── 以下为「无显式 Target」或「Self + Enemy 混合」的回退逻辑 ──
+
+    // 7) 纯伤害/Debuff/CC/Knockback → Boss
     const onlyOffensive = effects.every((ef) =>
       ef.Type === 'Damage' || ef.Type === 'CrowdControl' || ef.Type === 'Knockback' ||
       ef.Type === 'DamageDebuff' || ef.Type === 'Debuff' || ef.Type === 'Accumulation' ||
       ef.Type === 'ConcentratedTarget' ||
-      (ef.Type === 'Buff' && ef.Target?.includes('Enemy'))
+      (ef.Type === 'Buff' && toArray(ef.Target).includes('Enemy'))
     )
     if (onlyOffensive) return { targetMode: 'boss' as TargetMode, hasTarget: true }
 
-    // 纯友方 Buff/Heal/Shield/Regen/Heal → 仅 STRIKER
+    // 8) 纯友方 Buff/Heal/Shield/Regen/Dispel → STRIKER
     const onlyAllySupport = effects.every((ef) =>
       ef.Type === 'Buff' || ef.Type === 'Heal' || ef.Type === 'Shield' ||
       ef.Type === 'Regen' || ef.Type === 'Dispel' ||
-      (ef.Type === 'Special' && ef.Target?.includes('Ally'))
+      (ef.Type === 'Special' && toArray(ef.Target).includes('Ally'))
     )
     if (onlyAllySupport) return { targetMode: 'striker' as TargetMode, hasTarget: true }
 
-    // 混合（Damage + Buff 等）→ Boss
+    // 9) 兜底 → Boss
     return { targetMode: 'boss' as TargetMode, hasTarget: true }
   }, [ex.Effects])
 
@@ -102,7 +152,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const totalFrames = min * 1800 + sec * 30 + frame
 
   // ── Cost 充足性检测 ──
-  const skillCost = ex.Cost[0]
+  const skillCost = ex.Cost[0] * COST_SCALE
   const availableCost = costAtFrame(costTimeline, totalFrames)
   const hasEnoughCost = availableCost >= skillCost
 
@@ -141,6 +191,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     addSkillBlock(slotIndex, {
       type: 'ex', name: ex.Name, startFrame: totalFrames,
       studentId: student.Id, targetId: effectiveTargetId(),
+      skillCost: ex.Cost[0], skillDuration: ex.Duration,
     })
   }
 
@@ -148,7 +199,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     <div className="rounded p-3 border" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
       {/* 头像 + 技能图标 + 技能名 · COST 右上 */}
       <div className="flex items-start gap-2.5 mb-3">
-        <img src={`/icons/${student.Icon}.webp`} alt="" className="w-8 h-8 rounded-full shrink-0 bg-gray-700 mt-0.5" />
+        <img src={`/icons/${student.Icon}.webp`} alt="" className="w-9 h-9 rounded-lg shrink-0 bg-gray-700 mt-0.5" />
         <SkillIcon icon={ex.Icon} bulletType={student.BulletType} size={28} />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{ex.Name}</div>
@@ -164,19 +215,19 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
           onChange={(e) => setMin(digits(e.target.value))}
           onBlur={() => setMin((v) => clamp(v, 0, 5))}
           className="w-8 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>m</span>
+        <span className="text-xs font-game" style={{ color: 'var(--text-muted)' }}>m</span>
 
         <input value={vSec}
           onChange={(e) => setSec(digits(e.target.value))}
           onBlur={() => setSec((v) => clamp(v, 0, 59))}
           className="w-8 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>s</span>
+        <span className="text-xs font-game" style={{ color: 'var(--text-muted)' }}>s</span>
 
         <input value={vMs}
           onChange={(e) => { const v = digits(e.target.value); setMs(v); syncFrameFromMs(parseInt(v) || 0) }}
           onBlur={() => setMs((v) => clamp(v, 0, 999))}
           className="w-10 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>ms</span>
+        <span className="text-xs font-game" style={{ color: 'var(--text-muted)' }}>ms</span>
 
         <span className="text-xs mx-0.5" style={{ color: 'var(--text-muted)' }}>/</span>
 
@@ -184,11 +235,11 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
           onChange={(e) => { const v = digits(e.target.value); setFrame(v); syncMsFromFrame(parseInt(v) || 0) }}
           onBlur={() => setFrame((v) => clamp(v, 0, 29))}
           className="w-8 text-center rounded px-0.5 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>f</span>
+        <span className="text-xs font-game" style={{ color: 'var(--text-muted)' }}>f</span>
       </div>
 
       {/* 换算显示 */}
-      <div className="mb-2 text-[11px] font-mono flex justify-center items-center gap-3">
+      <div className="mb-2 text-xs font-mono flex justify-center items-center gap-3">
         <span style={{ color: 'var(--text-secondary)' }}>
           {min}:{String(sec).padStart(2, '0')}.{String(msVal).padStart(3, '0')}
         </span>
@@ -197,7 +248,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
       </div>
 
       {/* 目标选择器 */}
-      {hasTarget && (
+      {hasTarget ? (
         <div className="flex items-center gap-2 text-xs">
           <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
           <select
@@ -224,17 +275,24 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
             }
           </select>
         </div>
-      )}
+      ) : targetMode === 'self' ? (
+        <div className="flex items-center gap-2 text-xs">
+          <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
+          <span className="font-game text-[11px] px-1.5 py-0.5 rounded" style={{ color: '#10b981', background: 'rgba(16,185,129,0.10)' }}>
+            {t.skill.target_self}
+          </span>
+        </div>
+      ) : null}
 
       {/* 底部操作栏 */}
       <div className="flex items-center gap-2 mt-3 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{ex.Duration}帧</span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{ex.Duration}帧</span>
         {!isTimeValid && !isNaN(totalFrames) && (
-          <span className="text-[10px] text-red-400">时间冲突</span>
+          <span className="text-[11px] text-red-400">时间冲突</span>
         )}
         {isTimeValid && !hasEnoughCost && !isNaN(totalFrames) && (
-          <span className="text-[10px] text-red-400">
-            COST不足 ({skillCost}/{availableCost.toFixed(1)})
+          <span className="text-[11px] text-red-400">
+            <span className="font-game">COST</span>不足 ({skillCost}/{availableCost.toFixed(1)})
           </span>
         )}
         <div className="flex-1" />

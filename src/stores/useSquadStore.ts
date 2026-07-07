@@ -1,7 +1,30 @@
 import { create } from 'zustand'
-import type { Student, SquadType } from '../types/student'
+import type { Student } from '../types/student'
 import type { SquadConfig, SquadSlot, SquadMode } from '../types/squad'
 import { useTimelineStore } from './useTimelineStore'
+
+const LS_KEY = 'abi-squad'
+
+interface SquadSnapshot {
+  mode: SquadMode
+  slots: { index: number; studentId: number }[]
+}
+
+function loadSnapshot(): SquadSnapshot | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as SquadSnapshot
+  } catch { return null }
+}
+
+function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
+  const data: SquadSnapshot = {
+    mode,
+    slots: slots.filter(s => s.student).map(s => ({ index: s.index, studentId: s.student!.Id })),
+  }
+  localStorage.setItem(LS_KEY, JSON.stringify(data))
+}
 
 /** 生成常规战斗的卡槽配置（4前台 + 2后台） */
 function createNormalSlots(): SquadSlot[] {
@@ -27,9 +50,28 @@ function createTotalAssaultSlots(): SquadSlot[] {
   return slots
 }
 
+/** 从 localStorage 恢复初始配置 */
+function createInitialConfig(): SquadConfig {
+  const snap = loadSnapshot()
+  const mode = snap?.mode ?? 'normal'
+  return {
+    mode,
+    slots: mode === 'normal' ? createNormalSlots() : createTotalAssaultSlots(),
+  }
+}
+
 interface SquadStore {
   config: SquadConfig
 
+  /** 初始牌序 (slotIndex 数组). null=不启用牌序验证 */
+  deckOrder: number[] | null
+  /** 设置牌序 */
+  setDeckOrder: (order: number[]) => void
+  /** 启用/禁用牌序验证 */
+  toggleDeckOrder: () => void
+
+  /** 从 localStorage 恢复编队（需在 students 加载后调用） */
+  restoreFromStorage: (getStudent: (id: number) => Student | null) => void
   /** 切换队伍模式 */
   setMode: (mode: SquadMode) => void
   /** 分配学生到指定位置 */
@@ -49,9 +91,35 @@ interface SquadStore {
 }
 
 export const useSquadStore = create<SquadStore>((set, get) => ({
-  config: {
-    mode: 'normal',
-    slots: createNormalSlots(),
+  config: createInitialConfig(),
+  deckOrder: null,
+
+  setDeckOrder: (order) => set({ deckOrder: order }),
+
+  toggleDeckOrder: () => {
+    const current = get().deckOrder
+    if (current) {
+      set({ deckOrder: null })
+    } else {
+      // 生成默认牌序：按 slotIndex 排序的已配置学生
+      const order = get().config.slots
+        .filter(s => s.student)
+        .map(s => s.index)
+      set({ deckOrder: order })
+    }
+  },
+
+  restoreFromStorage: (getStudent) => {
+    const snap = loadSnapshot()
+    if (!snap) return
+    const currentMode = get().config.mode
+    if (snap.mode !== currentMode) {
+      get().setMode(snap.mode)
+    }
+    for (const { index, studentId } of snap.slots) {
+      const student = getStudent(studentId)
+      if (student) get().assignStudent(index, student)
+    }
   },
 
   setMode: (mode) => {
@@ -124,4 +192,9 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
       config: { ...state.config, slots },
     })),
 }))
+
+// 订阅变更 → 自动持久化
+useSquadStore.subscribe((state) => {
+  saveSnapshot(state.config.mode, state.config.slots)
+})
 

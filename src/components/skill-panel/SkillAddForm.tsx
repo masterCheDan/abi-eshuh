@@ -54,21 +54,21 @@ export function SkillAddForm({ label, skillName, cost, duration, applyFrame, stu
           {icon && bulletType && (
             <SkillIcon icon={icon} bulletType={bulletType} size={22} />
           )}
-          <span className="font-semibold text-gray-300 uppercase shrink-0">{label}</span>
+          <span className="font-semibold text-gray-300 uppercase shrink-0 font-game text-sm">{label}</span>
           <span className="text-gray-400 truncate">{skillName === t.skill.no_skill ? t.skill.no_skill : skillName}</span>
         </div>
 
         {isDraggable && (
           <button
             onClick={() => onAdd(skillName)}
-            className="text-[10px] text-blue-400 hover:text-blue-300 shrink-0 ml-1"
+            className="text-[11px] text-blue-400 hover:text-blue-300 shrink-0 ml-1"
           >
             {t.skill.add}
           </button>
         )}
       </div>
 
-      <div className="flex gap-2 text-[9px] text-gray-500">
+      <div className="flex gap-2 text-[10px] text-gray-500">
         {cost !== undefined && <span>{tpl(t.skill.cost, { cost })}</span>}
         {duration > 0 && <span>{tpl(t.skill.anim_frames, { n: duration })}</span>}
         {applyFrame > 0 && <span>{tpl(t.skill.apply_frames, { n: applyFrame })}</span>}

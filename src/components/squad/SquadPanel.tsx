@@ -1,5 +1,6 @@
 import { useSquadStore } from '../../stores/useSquadStore'
 import { SquadSlotComponent } from './SquadSlot'
+import { CardOrderEditor } from './CardOrderEditor'
 import type { SquadMode } from '../../types/squad'
 import { useI18n } from '../../i18n'
 
@@ -47,6 +48,7 @@ export function SquadPanel() {
           ))}
         </div>
       </div>
+      <CardOrderEditor />
     </div>
   )
 }

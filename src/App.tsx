@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { useStudentStore } from './stores/useStudentStore'
+import { useSquadStore } from './stores/useSquadStore'
+import { useSimulationStore } from './stores/useSimulationStore'
 import { useThemeStore, type ThemeMode } from './stores/useThemeStore'
 import { Timeline } from './components/timeline/Timeline'
 import { EventLog } from './components/timeline/EventLog'
@@ -17,15 +19,18 @@ const LOCALE_LABELS: Record<SupportedLocale, string> = {
 const THEME_LABELS: Record<ThemeMode, string> = { light: '☀️', dark: '🌙', auto: '🔄' }
 
 function AppContent() {
-  const { loadStudents } = useStudentStore()
+  const { loadStudents, getStudent } = useStudentStore()
   const { locale, setLocale } = useI18n()
   const { mode, setMode } = useThemeStore()
 
   useEffect(() => {
-    loadStudents()
-    // 初始化主题（只执行一次）
+    loadStudents().then(() => {
+      useSquadStore.getState().restoreFromStorage(getStudent)
+      // 初始推演
+      useSimulationStore.getState().tick()
+    })
     useThemeStore.getState().setMode('dark')
-  }, [loadStudents])
+  }, [loadStudents, getStudent])
 
   return (
     <div className="h-screen flex flex-col text-[color:var(--text-primary)]" style={{ background: 'var(--bg-app)' }}>
@@ -66,7 +71,7 @@ function AppContent() {
       {/* 主内容区 */}
       <div className="flex-1 flex gap-4 p-4 overflow-hidden">
         {/* 左侧面板 */}
-        <aside className="w-72 shrink-0 flex flex-col gap-3 overflow-y-auto">
+        <aside className="w-[500px] shrink-0 flex flex-col gap-3 overflow-y-auto">
           <SquadPanel />
           <SkillPanel />
         </aside>

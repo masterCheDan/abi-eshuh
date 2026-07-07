@@ -1,0 +1,59 @@
+/**
+ * Boss 数据 Store
+ *
+ * 从 public/data/bosses.min.json 加载 14 名总力战 Boss 元数据。
+ * 用户选择 Boss + 难度后，通过 Engine Bridge 影响 BattleEnv。
+ */
+
+import { create } from 'zustand'
+import type { BossData } from '../types/boss'
+
+interface BossState {
+    /** 全部 Boss 数据（以 ID 为 key） */
+    bosses: Record<string, BossData> | null
+    /** 当前选中的 Boss ID (0=无, 1-14=具体Boss) */
+    selectedBossId: number
+    /** 当前选中的难度 (0-7) */
+    selectedDifficulty: number
+    /** 加载状态 */
+    loading: boolean
+
+    /** 加载 Boss 数据 */
+    loadBosses: () => Promise<void>
+    /** 选择 Boss */
+    selectBoss: (id: number) => void
+    /** 选择难度 */
+    selectDifficulty: (d: number) => void
+    /** 获取当前选中的 Boss */
+    getSelectedBoss: () => BossData | null
+}
+
+export const useBossStore = create<BossState>((set, get) => ({
+    bosses: null,
+    selectedBossId: 0,
+    selectedDifficulty: 4, // 默认 Extreme
+    loading: false,
+
+    loadBosses: async () => {
+        if (get().bosses) return
+        set({ loading: true })
+        try {
+            const res = await fetch('/data/bosses.min.json')
+            if (!res.ok) throw new Error(`加载失败: ${res.status}`)
+            const data: Record<string, BossData> = await res.json()
+            set({ bosses: data, loading: false })
+        } catch {
+            set({ loading: false })
+        }
+    },
+
+    selectBoss: (id) => set({ selectedBossId: id }),
+
+    selectDifficulty: (d) => set({ selectedDifficulty: d }),
+
+    getSelectedBoss: () => {
+        const { bosses, selectedBossId } = get()
+        if (!bosses || selectedBossId === 0) return null
+        return bosses[String(selectedBossId)] ?? null
+    },
+}))

@@ -38,7 +38,7 @@ for sid, s in raw.items():
     def clean_ex(skill):
         if not skill:
             return None
-        return {
+        cleaned = {
             'Name': skill.get('Name', ''),
             'Desc': skill.get('Desc', ''),
             'Parameters': skill.get('Parameters', []),
@@ -49,6 +49,25 @@ for sid, s in raw.items():
             'Icon': skill.get('Icon', ''),
             'Effects': clean_effects(skill.get('Effects', [])),
         }
+        # ExtraSkills (形态切换后技能) — 与 Ex 相同结构
+        extras = skill.get('ExtraSkills')
+        if extras:
+            cleaned['ExtraSkills'] = [
+                {
+                    'Id': es.get('Id'),
+                    'Name': es.get('Name', ''),
+                    'Desc': es.get('Desc', ''),
+                    'Parameters': es.get('Parameters', []),
+                    'Cost': es.get('Cost', []),
+                    'Duration': es.get('Duration', 0),
+                    'Range': es.get('Range', 0),
+                    'Radius': es.get('Radius'),
+                    'Icon': es.get('Icon', ''),
+                    'Effects': clean_effects(es.get('Effects', [])),
+                }
+                for es in extras
+            ]
+        return cleaned
 
     def clean_public(skill):
         if not skill:

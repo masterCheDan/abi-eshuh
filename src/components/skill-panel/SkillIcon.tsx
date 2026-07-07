@@ -14,7 +14,7 @@ const BULLET_COLORS: Record<BulletType, string> = {
 }
 
 /** 从技能 Icon 字段推导文件名（SchaleDB 格式） */
-export function skillIconSrc(iconField: string): string {
+function skillIconSrc(iconField: string): string {
   if (!iconField) return ''
   return `/skills/${iconField}.webp`
 }

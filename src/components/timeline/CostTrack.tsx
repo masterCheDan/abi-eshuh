@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
-import { computeCostTimeline, costAtFrame } from '../../utils/costCalc'
+import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
 
 interface CostTrackProps {
     pxPerFrame: number
@@ -41,7 +41,7 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
         return timeline
             .map((p) => {
                 const x = p.frame * pxPerFrame
-                const y = PADDING_Y + chartH - (p.cost / maxCost) * chartH
+                const y = PADDING_Y + chartH - (p.cost / COST_SCALE / maxCost) * chartH
                 return `${x},${y.toFixed(1)}`
             })
             .join(' ')
@@ -73,7 +73,7 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
         )
     }
 
-    const costText = hoverInfo ? hoverInfo.cost.toFixed(1) : ''
+    const costText = hoverInfo ? (hoverInfo.cost / COST_SCALE).toFixed(1) : ''
     const [intPart, decPart] = costText ? costText.split('.') : ['0', '0']
 
     return (
@@ -93,9 +93,40 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                     const y = PADDING_Y + chartH - (c / maxCost) * chartH
                     return (
                         <div key={c} className="absolute left-0 right-0 flex items-center" style={{ top: y }}>
-                            <div className="absolute left-0 right-0 border-t border-gray-700/40" style={{ top: 0 }} />
-                            <span className="absolute left-1 text-[10px] text-gray-500">{c}</span>
+                            {/* 横向虚线 — Cost阈值 */}
+                            <div className="absolute left-0 right-0" style={{
+                                top: 0,
+                                borderTop: '1px dashed',
+                                borderColor: c === 0 ? 'transparent' : 'rgba(250,204,21,0.18)',
+                            }} />
+                            <span className="absolute left-1 text-[10px] text-gray-500 font-game">{c}</span>
                         </div>
+                    )
+                })}
+
+                {/* 回费关键节点高亮标记 */}
+                {timeline.filter((p, i) => {
+                    if (i === 0) return false
+                    const prev = timeline[i - 1]
+                    return Math.floor(p.cost / COST_SCALE) > Math.floor(prev.cost / COST_SCALE)
+                }).map((p, i) => {
+                    const chartH = HEIGHT - PADDING_Y * 2
+                    const x = p.frame * pxPerFrame
+                    const y = PADDING_Y + chartH - (p.cost / COST_SCALE / maxCost) * chartH
+                    return (
+                        <div
+                            key={`regen-${i}`}
+                            className="absolute pointer-events-none"
+                            style={{
+                                left: x - 3,
+                                top: y - 3,
+                                width: 7,
+                                height: 7,
+                                borderRadius: '50%',
+                                background: 'rgba(250,204,21,0.5)',
+                                boxShadow: '0 0 3px rgba(250,204,21,0.4)',
+                            }}
+                        />
                     )
                 })}
 

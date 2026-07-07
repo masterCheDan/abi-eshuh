@@ -32,13 +32,18 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   const handleImport = () => {
     setError('')
 
+    if (!students) {
+      setError('学生数据尚未加载')
+      return
+    }
+
     const result = decodeShareCode(codeText.trim())
     if (!result) {
       setError('无法解析该分享码，请检查是否完整复制')
       return
     }
 
-    const data: ImportData = result.data
+    const data = result.data as ImportData
     const { studentIds, skills } = data
 
     // ── 1. 建立新的 SquadSlot 数组 + TimeLane 数组 ──

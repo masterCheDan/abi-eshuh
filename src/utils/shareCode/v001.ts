@@ -8,7 +8,7 @@
  *   0.0.1|10000,-1,10006,10012,-1,-1|2720,0,-1;3750,2,0;
  */
 
-import type { StudentLane, SkillBlock } from '../../types/timeline'
+import type { StudentLane } from '../../types/timeline'
 
 export const VERSION = '0.0.1'
 

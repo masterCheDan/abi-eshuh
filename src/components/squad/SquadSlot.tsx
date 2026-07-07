@@ -24,13 +24,13 @@ export function SquadSlotComponent({ slotIndex }: SquadSlotProps) {
     return (
       <div className="relative rounded p-2 border group" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-[10px] shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-gray-600 flex items-center justify-center text-[11px] shrink-0">
             {slot.student.Name.charAt(0)}
           </div>
           <div className="min-w-0">
             <div className="text-xs truncate" style={{ color: 'var(--text-primary)' }}>{slot.student.Name}</div>
-            <div className="text-[9px] truncate" style={{ color: 'var(--text-muted)' }}>
-              {slot.student.Position} · {slot.student.BulletType}
+            <div className="text-[10px] truncate font-game" style={{ color: 'var(--text-muted)' }}>
+              {slot.student.Position} · {slot.student.BulletType} · {slot.student.ArmorType}
             </div>
           </div>
         </div>

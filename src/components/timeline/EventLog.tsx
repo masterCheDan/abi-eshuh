@@ -23,7 +23,7 @@ export function EventLog() {
   const [showImport, setShowImport] = useState(false)
 
   const events = useMemo(() => {
-    type Ev = { frame: number; skillName: string; skillIcon: string; bulletType: BulletType; casterName: string; casterIcon: string; targetName: string; targetIcon: string; isBoss: boolean }
+    type Ev = { frame: number; skillName: string; skillIcon: string; bulletType: BulletType; casterName: string; casterIcon: string; targetName: string; targetIcon: string; isBoss: boolean; isSelf: boolean }
     const list: Ev[] = []
     const idToInfo = new Map<number, { name: string; icon: string }>()
     for (const lane of lanes) { if (lane.student) idToInfo.set(lane.student.Id, { name: lane.student.Name, icon: lane.student.Icon }) }
@@ -33,13 +33,14 @@ export function EventLog() {
         if (skill.type !== 'ex') continue
         const targetId = skill.targetId ?? skill.studentId
         const target = idToInfo.get(targetId)
-        const isBoss = !target || targetId === skill.studentId
-        list.push({ frame: skill.startFrame, skillName: skill.name, skillIcon: caster.Skills.E.Icon, bulletType: caster.BulletType, casterName: caster.Name, casterIcon: caster.Icon, targetName: isBoss ? t.event_log.target_boss : target!.name, targetIcon: isBoss ? '' : target!.icon, isBoss })
+        const isSelf = targetId === skill.studentId && targetId !== -1
+        const isBoss = targetId === -1
+        list.push({ frame: skill.startFrame, skillName: skill.name, skillIcon: caster.Skills.E.Icon, bulletType: caster.BulletType, casterName: caster.Name, casterIcon: caster.Icon, targetName: isBoss ? t.event_log.target_boss : isSelf ? caster.Name : target?.name ?? '', targetIcon: isBoss || isSelf ? '' : target?.icon ?? '', isBoss, isSelf })
       }
     }
     list.sort((a, b) => a.frame - b.frame)
     return list
-  }, [lanes])
+  }, [lanes, t])
 
   const DOT_SIZE = 12; const LINE_WIDTH = 2; const LINE_LEFT = 14
 
@@ -76,19 +77,21 @@ export function EventLog() {
             {events.map((ev, i) => (
               <div key={i} className="relative mb-5 last:mb-0">
                 <div className="flex items-center gap-2">
-                  <div className="absolute rounded-full border-2 z-10" style={{ left: -(LINE_LEFT + DOT_SIZE), top: 6, width: DOT_SIZE, height: DOT_SIZE, background: ev.isBoss ? '#ef4444' : 'var(--bg-surface)', borderColor: ev.isBoss ? '#ef4444' : 'var(--border)' }} />
+                  <div className="absolute rounded-full border-2 z-10" style={{ left: -(LINE_LEFT + DOT_SIZE), top: 6, width: DOT_SIZE, height: DOT_SIZE, background: ev.isBoss ? '#ef4444' : ev.isSelf ? '#10b981' : 'var(--bg-surface)', borderColor: ev.isBoss ? '#ef4444' : ev.isSelf ? '#10b981' : 'var(--border)' }} />
                   <div className="flex items-baseline gap-1.5 font-mono">
                     <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{formatTime(ev.frame).ms}</span>
                     <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>({formatTime(ev.frame).frame})</span>
                   </div>
                 </div>
                 <div className="ml-4 mt-1.5 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
-                  <img src={`/icons/${ev.casterIcon}.webp`} alt="" className="w-5 h-5 rounded-full shrink-0 bg-gray-700" />
+                  <img src={`/icons/${ev.casterIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
                   {ev.skillIcon && <SkillIcon icon={ev.skillIcon} bulletType={ev.bulletType} size={18} />}
                   <span className="text-gray-500 text-xs shrink-0">-&gt;</span>
                   {ev.isBoss
-                    ? <span className="text-[10px] font-bold text-red-400 px-1">Boss</span>
-                    : <img src={`/icons/${ev.targetIcon}.webp`} alt="" className="w-5 h-5 rounded-full shrink-0 bg-gray-700" />
+                    ? <span className="text-[10px] font-bold text-red-400 px-1 font-game">Boss</span>
+                    : ev.isSelf
+                      ? <span className="text-[10px] font-bold text-emerald-400 px-1 font-game">自身</span>
+                      : <img src={`/icons/${ev.targetIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
                   }
                 </div>
               </div>

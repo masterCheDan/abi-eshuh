@@ -6,15 +6,15 @@
  * - 每名学生基础 Regen=700, 10000 回复力 = 每秒 +1 Cost
  * - EX 施放扣减 Cost[0], 帧间逐步恢复
  * - CostChange 效果修改回复力 (临时/永久)
+ *
+ * 整数模型：内部 Cost 统一放大 COST_SCALE 倍，避免浮点误差。
  */
 
 import type { StudentLane } from '../types/timeline'
 import type { SquadMode } from '../types/squad'
 import type { Student } from '../types/student'
 
-function regenToPerFrame(regen: number): number {
-    return (regen / 10000) / 30
-}
+export const COST_SCALE = 300000
 
 export interface CostFrame { frame: number; cost: number }
 
@@ -45,7 +45,7 @@ export function computeCostTimeline(
     lanes: StudentLane[],
     mode: SquadMode,
 ): CostFrame[] {
-    const maxCost = mode === 'normal' ? 10 : 20
+    const maxCost = (mode === 'normal' ? 10 : 20) * COST_SCALE
 
     const activeLanes = lanes.filter(l => l.student)
     if (activeLanes.length === 0) {
@@ -65,92 +65,59 @@ export function computeCostTimeline(
         }
     }
 
-    // 过滤掉已经在基础回复力中计入的 passive (frame===0)
-    const dynamicChanges = regChanges.filter(r => r.frame > 0).sort((a, b) => a.frame - b.frame)
+    // 按生效帧排序的动态回复变化
+    const startEvents = regChanges
+        .filter(r => r.frame > 0)
+        .sort((a, b) => a.frame - b.frame)
+    const endEvents = [...regChanges]
+        .filter(r => r.endFrame < 5400)
+        .sort((a, b) => a.endFrame - b.endFrame)
 
     // ── EX 消费事件 ──
     const casts: { frame: number; delta: number }[] = []
     for (const lane of activeLanes) {
         for (const skill of lane.skills) {
             if (skill.type !== 'ex') continue
-            casts.push({ frame: skill.startFrame, delta: -(lane.student!.Skills.E.Cost[0]) })
+            const cost = skill.skillCost ?? lane.student!.Skills.E.Cost[0]
+            casts.push({ frame: skill.startFrame, delta: -cost * COST_SCALE })
         }
     }
     casts.sort((a, b) => a.frame - b.frame)
 
-    // ── 合并关键帧 ──
-    const keyFrames = new Set<number>([0, 5400])
-    for (const c of casts) keyFrames.add(c.frame)
-    for (const r of dynamicChanges) { keyFrames.add(r.frame); keyFrames.add(r.endFrame) }
-    const sortedFrames = [...keyFrames].sort((a, b) => a - b)
+    let currentCost = 0
+    let castIdx = 0
+    let startIdx = 0
+    let endIdx = 0
+    const points: CostFrame[] = []
 
-    // ── 模拟 ──
-    const result: CostFrame[] = [{ frame: 0, cost: 0 }]
-    let cost = 0
-    let lastFrame = 0
-    let currentRegen = baseRegen
-    const activeChanges: RegChange[] = []
-
-    const rate = () => regenToPerFrame(Math.max(0, currentRegen))
-
-    for (const frame of sortedFrames) {
-        // 恢复
-        const elapsed = frame - lastFrame
-        if (elapsed > 0) {
-            const r = rate()
-            const remaining = maxCost - cost
-            if (remaining > 0 && r > 0) {
-                const fillFrames = Math.ceil(remaining / r)
-                const capFrame = lastFrame + fillFrames
-                if (capFrame < frame) {
-                    result.push({ frame: capFrame, cost: maxCost })
-                    lastFrame = capFrame
-                    cost = maxCost
-                }
-            }
-            const rec = frame - lastFrame
-            if (rec > 0 && cost < maxCost) {
-                cost = Math.min(maxCost, cost + r * rec)
-            }
-            if (lastFrame !== frame) {
-                result.push({ frame, cost: Math.round(cost * 100) / 100 })
-            }
+    for (let f = 0; f <= 5400; f++) {
+        // 应用动态回复力变化
+        while (startIdx < startEvents.length && startEvents[startIdx].frame === f) {
+            baseRegen += startEvents[startIdx].regenDelta
+            startIdx++
         }
-
-        // CostChange 生效/过期
-        for (const rc of dynamicChanges.filter(r => r.frame === frame)) {
-            activeChanges.push(rc)
-            currentRegen += rc.regenDelta
-        }
-        for (let i = activeChanges.length - 1; i >= 0; i--) {
-            if (activeChanges[i].endFrame === frame) {
-                currentRegen -= activeChanges[i].regenDelta
-                activeChanges.splice(i, 1)
-            }
+        while (endIdx < endEvents.length && endEvents[endIdx].endFrame === f) {
+            baseRegen -= endEvents[endIdx].regenDelta
+            endIdx++
         }
 
         // EX 扣减
-        for (const cast of casts.filter(c => c.frame === frame)) {
-            cost = Math.max(0, cost + cast.delta)
-            result.push({ frame, cost: Math.round(cost * 100) / 100 })
+        while (castIdx < casts.length && casts[castIdx].frame === f) {
+            currentCost += casts[castIdx].delta
+            castIdx++
         }
 
-        lastFrame = frame
+        // 自然回复（放大后每帧增加量 = 基础 Regen）
+        currentCost = Math.min(maxCost, currentCost + baseRegen)
+        currentCost = Math.max(0, currentCost)
+
+        points.push({ frame: f, cost: currentCost })
     }
 
-    // 末尾补齐
-    {
-        const elapsed = 5400 - lastFrame
-        if (elapsed > 0 && cost < maxCost) {
-            cost = Math.min(maxCost, cost + rate() * elapsed)
-        }
-        result.push({ frame: 5400, cost: Math.round(cost * 100) / 100 })
-    }
-
-    return result
+    return points
 }
 
-/** 查询任意帧的可用 Cost */
+/** 查询任意帧的可用 Cost（放大整数） */
 export function costAtFrame(timeline: CostFrame[], f: number): number {
     if (timeline.length === 0) return 0
     let hi = 0
@@ -161,5 +128,5 @@ export function costAtFrame(timeline: CostFrame[], f: number): number {
     const a = timeline[lo], b = timeline[hi]
     if (a.frame === b.frame) return a.cost
     const t = (f - a.frame) / (b.frame - a.frame)
-    return a.cost + (b.cost - a.cost) * t
+    return Math.round(a.cost + (b.cost - a.cost) * t)
 }
