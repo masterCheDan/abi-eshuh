@@ -48,6 +48,8 @@ export interface Formation {
   slots: (number | null)[]
   /** 全队列发牌顺序 (学生 slotIndex 数组) */
   deckOrder?: number[]
+  /** 各槽位 EX 技能等级 (1-5)，按 slotIndex 排列 */
+  skillLevels?: number[]
 }
 
 // ═══════════════════════════════════════════════════

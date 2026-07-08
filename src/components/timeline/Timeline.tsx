@@ -26,6 +26,8 @@ export function Timeline() {
   const selectedDifficulty = useBossStore((s) => s.selectedDifficulty)
   const selectedBoss = getSelectedBoss()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollMode = useTimelineStore((s) => s.scrollMode)
+  const toggleScrollMode = useTimelineStore((s) => s.toggleScrollMode)
   const [zoom, setZoom] = useState(1)
   const [collapsedLanes, setCollapsedLanes] = useState<Set<number>>(new Set())
   const [highlightedFrame, setHighlightedFrame] = useState<number | null>(null)
@@ -59,15 +61,19 @@ export function Timeline() {
     if (!el) return
     const handler = (e: WheelEvent) => {
       e.preventDefault()
-      setZoom((prev) => {
-        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
-        return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta))
-      })
+      if (scrollMode === 'pan') {
+        el.scrollLeft += e.deltaY
+      } else {
+        setZoom((prev) => {
+          const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
+          return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta))
+        })
+      }
     }
 
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [])
+  }, [scrollMode])
 
   return (
     <div className="flex flex-col h-full rounded-lg border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
@@ -105,6 +111,14 @@ export function Timeline() {
         </div>
         <BossSelector />
         <div className="flex items-center gap-1">
+          <button
+            onClick={toggleScrollMode}
+            className="px-1.5 py-0.5 text-[10px] rounded text-gray-300"
+            style={{ background: scrollMode === 'pan' ? 'rgba(59,130,246,0.25)' : 'var(--bg-surface-alt)' }}
+            title={scrollMode === 'zoom' ? '滚轮：缩放（点击切换为平移）' : '滚轮：平移（点击切换为缩放）'}
+          >
+            {scrollMode === 'zoom' ? '🔍' : '✋'}
+          </button>
           <button
             onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP))}
             className="px-1.5 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 rounded text-gray-300"

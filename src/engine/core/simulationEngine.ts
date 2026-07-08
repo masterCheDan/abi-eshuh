@@ -148,7 +148,7 @@ export class SimulationEngine {
             })
             // 不阻断推演，仅记录
           }
-          if (costAtFrame(costTimeline, Math.max(0, frame - 1)) < (student.Skills.E.Cost[0]) * COST_SCALE) {
+          if (costAtFrame(costTimeline, Math.max(0, frame - 1)) < (student.Skills.E.Cost[(this.formation.skillLevels?.[slot] ?? 5) - 1]) * COST_SCALE) {
             errors.push({
               frame,
               issuerId: intent.issuerId,
@@ -398,13 +398,14 @@ export class SimulationEngine {
       const slot = this.resolveSlot(intent.issuerId)
       if (slot < 0) continue
       const student = this.students.get(intent.issuerId)
+      const exLevel = this.formation.skillLevels?.[slot] ?? 5
       this.lanes[slot].skills.push({
         type: 'ex',
         name: student?.Skills.E.Name ?? '',
         startFrame: intent.frame,
         studentId: intent.issuerId,
         targetId: intent.targetIds[0],
-        skillCost: student?.Skills.E.Cost[0],
+        skillCost: student ? student.Skills.E.Cost[exLevel - 1] : 0,
         skillDuration: student?.Skills.E.Duration,
       })
     }

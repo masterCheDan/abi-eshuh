@@ -7,7 +7,7 @@ const LS_KEY = 'abi-squad'
 
 interface SquadSnapshot {
   mode: SquadMode
-  slots: { index: number; studentId: number }[]
+  slots: { index: number; studentId: number; exLevel: number; nsLevel: number; ssLevel: number }[]
 }
 
 function loadSnapshot(): SquadSnapshot | null {
@@ -21,7 +21,13 @@ function loadSnapshot(): SquadSnapshot | null {
 function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
   const data: SquadSnapshot = {
     mode,
-    slots: slots.filter(s => s.student).map(s => ({ index: s.index, studentId: s.student!.Id })),
+    slots: slots.filter(s => s.student).map(s => ({
+      index: s.index,
+      studentId: s.student!.Id,
+      exLevel: s.exLevel,
+      nsLevel: s.nsLevel,
+      ssLevel: s.ssLevel,
+    })),
   }
   localStorage.setItem(LS_KEY, JSON.stringify(data))
 }
@@ -30,10 +36,10 @@ function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
 function createNormalSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
   }
   for (let i = 0; i < 2; i++) {
-    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false })
+    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
   }
   return slots
 }
@@ -42,10 +48,10 @@ function createNormalSlots(): SquadSlot[] {
 function createTotalAssaultSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 6; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
   }
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false })
+    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
   }
   return slots
 }
@@ -78,6 +84,8 @@ interface SquadStore {
   assignStudent: (slotIndex: number, student: Student) => void
   /** 从位置移除学生 */
   removeStudent: (slotIndex: number) => void
+  /** 设置某位置的技能等级 */
+  setSkillLevel: (slotIndex: number, skill: 'ex' | 'ns' | 'ss', level: number) => void
   /** 检查某个位置是否可用 */
   isSlotAvailable: (slotIndex: number) => boolean
   /** 获取空余的前排位置数 */
@@ -109,6 +117,17 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
     }
   },
 
+  setSkillLevel: (slotIndex, skill, level) =>
+    set((state) => {
+      const newSlots = state.config.slots.map((s) => {
+        if (s.index !== slotIndex) return s
+        if (skill === 'ex') return { ...s, exLevel: level }
+        if (skill === 'ns') return { ...s, nsLevel: level }
+        return { ...s, ssLevel: level }
+      })
+      return { config: { ...state.config, slots: newSlots } }
+    }),
+
   restoreFromStorage: (getStudent) => {
     const snap = loadSnapshot()
     if (!snap) return
@@ -116,9 +135,14 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
     if (snap.mode !== currentMode) {
       get().setMode(snap.mode)
     }
-    for (const { index, studentId } of snap.slots) {
+    for (const { index, studentId, exLevel, nsLevel, ssLevel } of snap.slots) {
       const student = getStudent(studentId)
-      if (student) get().assignStudent(index, student)
+      if (student) {
+        get().assignStudent(index, student)
+        get().setSkillLevel(index, 'ex', exLevel ?? 5)
+        get().setSkillLevel(index, 'ns', nsLevel ?? 10)
+        get().setSkillLevel(index, 'ss', ssLevel ?? 10)
+      }
     }
   },
 

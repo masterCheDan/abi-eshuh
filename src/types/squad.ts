@@ -15,6 +15,12 @@ export interface SquadSlot {
   student: Student | null
   /** 是否已锁定 */
   locked: boolean
+  /** EX 技能等级 (1-5) */
+  exLevel: number
+  /** NS 技能等级 (1-10) */
+  nsLevel: number
+  /** SS 技能等级 (1-10) */
+  ssLevel: number
 }
 
 /** 队伍配置 */

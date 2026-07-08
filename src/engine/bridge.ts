@@ -12,6 +12,7 @@ import type { Student } from '../types/student'
 import type { Intent, BattleEnv, Formation } from '../engine/model/types'
 import { PRIORITY } from '../engine/model/fsm'
 import { SimulationEngine } from '../engine/core/simulationEngine'
+import { useSquadStore } from '../stores/useSquadStore'
 
 // ═══════════════════════════════════════════════════
 // 1. Store → Engine Input
@@ -47,10 +48,15 @@ export function buildFormation(
   deckOrder?: number[] | null,
 ): Formation {
   const sorted = [...lanes].sort((a, b) => a.slotIndex - b.slotIndex)
+
+  // 从 squad store 读取各槽位的 EX 等级
+  const slots = useSquadStore.getState().config.slots
+
   return {
     mode: sorted.length > 6 ? 'total_assault' : 'normal',
     slots: sorted.map(l => l.student?.Id ?? null),
     deckOrder: deckOrder && deckOrder.length > 0 ? deckOrder : undefined,
+    skillLevels: sorted.map(l => slots[l.slotIndex]?.exLevel ?? 5),
   }
 }
 

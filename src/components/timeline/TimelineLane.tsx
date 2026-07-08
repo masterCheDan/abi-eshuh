@@ -663,10 +663,24 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
 
         {/* 拖拽预览线 */}
         {dragOverFrame !== null && (
-          <div
-            className="absolute top-0 w-px bg-blue-400/60 z-10 pointer-events-none"
-            style={{ left: dragOverFrame * pxPerFrame, height: '100%' }}
-          />
+          <>
+            <div
+              className="absolute top-0 w-px bg-blue-400/60 z-10 pointer-events-none"
+              style={{ left: dragOverFrame * pxPerFrame, height: '100%' }}
+            />
+            {/* 拖拽 Cost 提示 */}
+            <div
+              className="absolute z-20 pointer-events-none px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap"
+              style={{
+                left: dragOverFrame * pxPerFrame + 4,
+                top: 2,
+                background: 'rgba(0,0,0,0.7)',
+                color: '#facc15',
+              }}
+            >
+              <span className="font-game">{(costAtFrame(costTimeline, dragOverFrame) / COST_SCALE).toFixed(1)} COST</span>
+            </div>
+          </>
         )}
 
         {(!student || skills.length === 0) && (

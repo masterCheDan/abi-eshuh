@@ -75,6 +75,8 @@ interface TimelineStore {
   lanes: StudentLane[]
   /** 总时长（帧），默认 3 分钟 = 5400 帧 */
   totalFrames: number
+  /** 滚轮操作模式：zoom=缩放(默认), pan=平移 */
+  scrollMode: 'zoom' | 'pan'
 
   /** 重新初始化轨道（切换阵容模式时调用） */
   initLanes: (mode: SquadMode) => void
@@ -94,11 +96,14 @@ interface TimelineStore {
   replaceAllLanes: (lanes: StudentLane[]) => void
   /** 更新指定技能块的字段（用于人工校准等单字段修改） */
   updateSkillBlock: (slotIndex: number, skillIndex: number, patch: Partial<SkillBlock>) => void
+  /** 切换滚轮模式 */
+  toggleScrollMode: () => void
 }
 
 export const useTimelineStore = create<TimelineStore>((set) => ({
   lanes: createInitialLanes(),
   totalFrames: 5400,
+  scrollMode: 'zoom',
 
   initLanes: (mode) => set({ lanes: createEmptyLanes(mode) }),
 
@@ -176,6 +181,11 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
   clearTimeline: () => set({ lanes: createEmptyLanes('normal') }),
 
   replaceAllLanes: (lanes) => set({ lanes }),
+
+  toggleScrollMode: () =>
+    set((state) => ({
+      scrollMode: state.scrollMode === 'zoom' ? 'pan' : 'zoom',
+    })),
 
   updateSkillBlock: (slotIndex, skillIndex, patch) =>
     set((state) => ({

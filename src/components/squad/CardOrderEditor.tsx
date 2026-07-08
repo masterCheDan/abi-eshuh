@@ -1,39 +1,151 @@
-/**
- * 初始牌序编辑器
- *
- * 允许用户设置在战斗开始时的手牌顺序 (deckOrder)。
- * 启用后，引擎只会允许初始窗口内的学生释放 EX。
- * 窗口大小: 常规 4+2 → 3 张, 大决战 6+4 → 5 张
- */
-
+import { useState } from 'react'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { StudentAvatar } from '../student-panel/StudentAvatar'
+import type { Student } from '../../types/student'
 
 export function CardOrderEditor() {
+    const [collapsed, setCollapsed] = useState(false)
+    const [selected, setSelected] = useState<number | null>(null)
     const slots = useSquadStore((s) => s.config.slots)
     const deckOrder = useSquadStore((s) => s.deckOrder)
     const setDeckOrder = useSquadStore((s) => s.setDeckOrder)
     const toggleDeckOrder = useSquadStore((s) => s.toggleDeckOrder)
-
-    const assignedSlots = slots.filter(s => s.student)
     const mode = useSquadStore((s) => s.config.mode)
+
     const windowSize = mode === 'normal' ? 3 : 5
     const enabled = deckOrder !== null
 
-    const moveCard = (index: number, direction: -1 | 1) => {
-        if (!deckOrder) return
-        const newOrder = [...deckOrder]
-        const target = index + direction
-        if (target < 0 || target >= newOrder.length) return
-            ;[newOrder[index], newOrder[target]] = [newOrder[target], newOrder[index]]
-        setDeckOrder(newOrder)
+    const assignedSlots = slots.filter(s => s.student)
+
+    const ordered = deckOrder ?? []
+    const orderedSet = new Set(ordered)
+    const freeSlots = assignedSlots.filter(s => !orderedSet.has(s.index))
+
+    const isOrdered = enabled && ordered.length > 0
+
+    const handleCardClick = (slotIndex: number) => {
+        if (selected === null) {
+            setSelected(slotIndex)
+        } else if (selected === slotIndex) {
+            setSelected(null)
+        } else {
+            const idxA = ordered.indexOf(selected)
+            const idxB = ordered.indexOf(slotIndex)
+            if (idxA >= 0 && idxB >= 0) {
+                const newOrder = [...ordered]
+                newOrder[idxA] = ordered[idxB]
+                newOrder[idxB] = ordered[idxA]
+                setDeckOrder(newOrder)
+            }
+            setSelected(null)
+        }
+    }
+
+    const handleRemoveFromOrder = (slotIndex: number) => {
+        setDeckOrder(ordered.filter(i => i !== slotIndex))
+        setSelected(null)
+    }
+
+    const handleAddToOrder = (slotIndex: number) => {
+        setDeckOrder([...ordered, slotIndex])
+    }
+
+    const getStudentBySlot = (slotIndex: number): Student | null => {
+        const slot = slots[slotIndex]
+        return slot?.student ?? null
     }
 
     if (assignedSlots.length === 0) return null
 
+    const renderCard = (slotIndex: number, index: number, isHand: boolean) => {
+        const student = getStudentBySlot(slotIndex)
+        if (!student) return null
+        const isSelected = selected === slotIndex
+
+        return (
+            <div key={slotIndex} className="flex flex-col items-center gap-0.5">
+                <div className="relative group">
+                    <button
+                        onClick={() => handleCardClick(slotIndex)}
+                        className={`rounded-lg transition-all ${isHand
+                            ? 'ring-2 ring-blue-400/60'
+                            : 'ring-1 ring-gray-600/30'
+                        } ${isSelected ? 'ring-offset-2 ring-offset-gray-800 scale-110' : ''}`}
+                        style={{
+                            background: isHand ? 'rgba(59,130,246,0.08)' : undefined,
+                        }}
+                    >
+                        <StudentAvatar student={student} size={40} />
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveFromOrder(slotIndex) }}
+                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center text-[8px] text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                        ×
+                    </button>
+                </div>
+                <span className="text-[9px] font-mono" style={{ color: isHand ? '#60a5fa' : 'var(--text-muted)' }}>
+                    {index + 1}
+                </span>
+            </div>
+        )
+    }
+
+    const renderFreeCard = (slot: { index: number; student: Student | null }) => {
+        if (!slot.student) return null
+        return (
+            <button
+                key={slot.index}
+                onClick={() => handleAddToOrder(slot.index)}
+                className="flex flex-col items-center gap-0.5 p-1 rounded opacity-40 hover:opacity-80 transition-opacity"
+            >
+                <StudentAvatar student={slot.student} size={36} />
+                <span className="text-[7px] font-game px-1 py-px rounded" style={{ background: 'rgba(107,114,128,0.2)', color: 'var(--text-muted)' }}>
+                    FREE
+                </span>
+            </button>
+        )
+    }
+
+    const renderOrderedCards = () => {
+        if (!isOrdered) return null
+
+        // 常规模式：一行显示
+        if (mode === 'normal') {
+            return (
+                <div className="flex flex-wrap gap-2">
+                    {ordered.map((slotIndex, i) => renderCard(slotIndex, i, i < windowSize))}
+                </div>
+            )
+        }
+
+        // 大决战模式：两行（手牌 + 后续牌序）
+        return (
+            <>
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {ordered.slice(0, windowSize).map((slotIndex, i) => renderCard(slotIndex, i, true))}
+                </div>
+                {ordered.length > windowSize && (
+                    <div className="flex flex-wrap gap-2">
+                        {ordered.slice(windowSize).map((slotIndex, i) => renderCard(slotIndex, windowSize + i, false))}
+                    </div>
+                )}
+            </>
+        )
+    }
+
     return (
-        <div className="rounded-lg p-3 border mt-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+        <div className="rounded-lg p-3 border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+            {/* 标题栏 */}
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setCollapsed(c => !c)}
+                        className="text-[10px] w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+                        style={{ color: 'var(--text-muted)' }}
+                    >
+                        {collapsed ? '▶' : '▼'}
+                    </button>
                     <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>牌序</span>
                     {enabled && (
                         <span className="text-[10px] font-game px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
@@ -55,89 +167,39 @@ export function CardOrderEditor() {
                 </button>
             </div>
 
-            {!enabled && (
-                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                    点击"已启用"按钮后自动按编队顺序生成初始牌序，并可拖拽调整顺序。
-                </p>
-            )}
-
-            {enabled && deckOrder && (
+            {!collapsed && (
                 <>
-                    <div className="space-y-1 mb-2">
-                        {deckOrder.map((slotIndex, i) => {
-                            const slot = slots[slotIndex]
-                            if (!slot?.student) return null
-                            const student = slot.student
-                            const inWindow = i < windowSize
-                            const consumed = i < 0 // 尚未消耗
+                    {!enabled && (
+                        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                            点击"已启用"按钮后自动按编队顺序生成初始牌序，并可调整顺序。
+                        </p>
+                    )}
 
-                            return (
-                                <div
-                                    key={slotIndex}
-                                    className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${inWindow ? 'opacity-100' : 'opacity-40'
-                                        }`}
-                                    style={{
-                                        background: inWindow ? 'rgba(59,130,246,0.06)' : 'transparent',
-                                        borderLeft: inWindow ? '2px solid rgba(59,130,246,0.4)' : '2px solid transparent',
-                                    }}
-                                >
-                                    {/* 序号 */}
-                                    <span className="text-[10px] font-mono shrink-0 w-4 text-center" style={{ color: 'var(--text-muted)' }}>
-                                        {i + 1}
-                                    </span>
+                    {enabled && (
+                        <div className="flex flex-col gap-2">
+                            {renderOrderedCards()}
 
-                                    {/* 头像首字母 */}
-                                    <div
-                                        className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                                        style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)' }}
-                                    >
-                                        {student.Name.charAt(0)}
-                                    </div>
+                            {!isOrdered && (
+                                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                                    牌序为空，点击下方自由学生添加到牌序中。
+                                </p>
+                            )}
 
-                                    {/* 姓名 */}
-                                    <span className="text-[11px] truncate flex-1" style={{ color: 'var(--text-primary)' }}>
-                                        {student.Name}
-                                    </span>
-
-                                    {/* 窗口 / 槽位标记 */}
-                                    {inWindow && (
-                                        <span className="text-[8px] font-game px-1 py-px rounded" style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa' }}>
-                                            手牌
-                                        </span>
-                                    )}
-                                    {consumed && (
-                                        <span className="text-[8px] px-1 py-px rounded" style={{ background: 'rgba(107,114,128,0.15)', color: 'var(--text-muted)' }}>
-                                            已出
-                                        </span>
-                                    )}
-
-                                    {/* 上移/下移 */}
-                                    <div className="flex gap-px shrink-0">
-                                        <button
-                                            onClick={() => moveCard(i, -1)}
-                                            disabled={i === 0}
-                                            className="w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 disabled:opacity-20 text-[10px]"
-                                            style={{ color: 'var(--text-muted)' }}
-                                        >
-                                            ↑
-                                        </button>
-                                        <button
-                                            onClick={() => moveCard(i, 1)}
-                                            disabled={i === deckOrder.length - 1}
-                                            className="w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 disabled:opacity-20 text-[10px]"
-                                            style={{ color: 'var(--text-muted)' }}
-                                        >
-                                            ↓
-                                        </button>
+                            {freeSlots.length > 0 && (
+                                <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {freeSlots.map(renderFreeCard)}
                                     </div>
                                 </div>
-                            )
-                        })}
-                    </div>
+                            )}
 
-                    <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
-                        前 {windowSize} 张为初始手牌。每次释放 EX 后消耗该卡及左侧所有卡，窗口右移。
-                    </p>
+                            {isOrdered && (
+                                <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
+                                    点击两张卡交换位置 · 悬停卡可 × 移除 · 点击 FREE 学生添加
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </>
             )}
         </div>

@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback } from 'react'
 import { useStudentStore } from '../../stores/useStudentStore'
 import type { Student, SquadType, School, BulletType, ArmorType, WeaponType } from '../../types/student'
 import { useI18n, tpl } from '../../i18n'
+import { StudentAvatar } from './StudentAvatar'
 
 export interface StudentSearchProps {
   squadType?: SquadType
@@ -521,26 +522,6 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-// ═══ 子组件：学生头像 ═══
-function StudentAvatar({ student, size }: { student: Student; size: number }) {
-  const bulletColor = BULLET_COLORS[student.BulletType] ?? '#888'
-
-  return (
-    <div
-      className="rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 select-none"
-      style={{
-        width: size,
-        height: size,
-        background: `linear-gradient(135deg, ${bulletColor}44, ${bulletColor}22)`,
-        color: bulletColor,
-        border: `1px solid ${bulletColor}44`,
-      }}
-    >
-      {student.Name.slice(0, 1)}
     </div>
   )
 }

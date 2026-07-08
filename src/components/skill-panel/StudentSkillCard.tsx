@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Student } from '../../types/student'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { ExSkillCard } from './ExSkillCard'
 import { ExtraSkillCard } from './ExtraSkillCard'
 import { getNsSkill } from '../../utils/nsTrigger'
+import { StudentAvatar } from '../student-panel/StudentAvatar'
 
 interface StudentSkillCardProps {
     student: Student
@@ -54,11 +55,12 @@ const ARMOR_COLORS: Record<string, string> = {
 }
 
 export function StudentSkillCard({ student }: StudentSkillCardProps) {
+    const [collapsed, setCollapsed] = useState(false)
     const slots = useSquadStore((s) => s.config.slots)
-    const slotIndex = useMemo(() => {
-        const slot = slots.find((s) => s.student?.Id === student.Id)
-        return slot?.index ?? -1
-    }, [slots, student.Id])
+    const slot = useMemo(() => slots.find((s) => s.student?.Id === student.Id), [slots, student.Id])
+    const slotIndex = slot?.index ?? -1
+    const nsLevel = slot?.nsLevel ?? 10
+    const ssLevel = slot?.ssLevel ?? 10
 
     const schoolColor = SCHOOL_COLORS[student.School] || '#6b7280'
     const roleColor = ROLE_COLORS[student.TacticRole] || '#6b7280'
@@ -73,13 +75,7 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
             {/* ═══ 学生头部 ═══ */}
             <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                 {/* 头像 */}
-                <div className="w-11 h-11 rounded-lg shrink-0 overflow-hidden bg-gray-700 flex items-center justify-center ring-2 ring-gray-600/50">
-                    {student.Icon ? (
-                        <img src={`/icons/${student.Icon}.webp`} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                        <span className="text-sm font-bold text-gray-400">{student.Name.charAt(0)}</span>
-                    )}
-                </div>
+                <StudentAvatar student={student} size={44} />
                 {/* 信息区 */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -114,9 +110,16 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
                 <span className="text-[11px] shrink-0" style={{ color: 'var(--text-muted)' }}>
                     {'★'.repeat(student.StarGrade)}
                 </span>
+                <button
+                    onClick={() => setCollapsed((c) => !c)}
+                    className="text-[10px] w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
+                    style={{ color: 'var(--text-muted)' }}
+                >
+                    {collapsed ? '▶' : '▼'}
+                </button>
             </div>
 
-            {/* ═══ 技能子卡片 ═══ */}
+            {!collapsed && (
             <div className="p-3 space-y-2">
                 {/* ── EX 子卡片 ── */}
                 <ExSkillCard student={student} />
@@ -141,20 +144,21 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
 
                 {/* ── NS 子卡片 ── */}
                 {ns && (
-                    <NsSubCard student={student} ns={ns} slotIndex={slotIndex} />
+                    <NsSubCard student={student} ns={ns} slotIndex={slotIndex} nsLevel={nsLevel} />
                 )}
 
                 {/* ── SS 子卡片（ExtraPassive） ── */}
                 {ep && ep.Name && (
-                    <SsSubCard student={student} ep={ep} slotIndex={slotIndex} />
+                    <SsSubCard student={student} ep={ep} slotIndex={slotIndex} ssLevel={ssLevel} />
                 )}
             </div>
+            )}
         </div>
     )
 }
 
 /** NS 子卡片组件 */
-function NsSubCard({ student, ns, slotIndex }: { student: Student; ns: NonNullable<ReturnType<typeof getNsSkill>>; slotIndex: number }) {
+function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: NonNullable<ReturnType<typeof getNsSkill>>; slotIndex: number; nsLevel: number }) {
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
 
     const handleAddNs = () => {
@@ -178,6 +182,16 @@ function NsSubCard({ student, ns, slotIndex }: { student: Student; ns: NonNullab
                 <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                         <span className="text-[10px] font-bold uppercase px-1 py-0.5 rounded font-game" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>NS</span>
+                        <select
+                            value={nsLevel}
+                            onChange={(e) => useSquadStore.getState().setSkillLevel(slotIndex, 'ns', Number(e.target.value))}
+                            className="text-[9px] px-1 py-0.5 rounded border"
+                            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
+                        >
+                            {Array.from({ length: 10 }, (_, i) => i + 1).map((l) => (
+                                <option key={l} value={l}>Lv.{l}</option>
+                            ))}
+                        </select>
                         {ns.Name}
                     </div>
                     {ns.Duration && (
@@ -214,7 +228,7 @@ function NsSubCard({ student, ns, slotIndex }: { student: Student; ns: NonNullab
 }
 
 /** SS 子卡片组件（ExtraPassive） */
-function SsSubCard({ student, ep, slotIndex }: { student: Student; ep: Student['Skills']['EP']; slotIndex: number }) {
+function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: Student['Skills']['EP']; slotIndex: number; ssLevel: number }) {
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
 
     const handleAddSs = () => {
@@ -238,6 +252,16 @@ function SsSubCard({ student, ep, slotIndex }: { student: Student; ep: Student['
                 <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                         <span className="text-[10px] font-bold uppercase px-1 py-0.5 rounded font-game" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>SS</span>
+                        <select
+                            value={ssLevel}
+                            onChange={(e) => useSquadStore.getState().setSkillLevel(slotIndex, 'ss', Number(e.target.value))}
+                            className="text-[9px] px-1 py-0.5 rounded border"
+                            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
+                        >
+                            {Array.from({ length: 10 }, (_, i) => i + 1).map((l) => (
+                                <option key={l} value={l}>Lv.{l}</option>
+                            ))}
+                        </select>
                         {ep.Name}
                     </div>
                     <div className="text-[10px] mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>

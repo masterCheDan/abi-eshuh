@@ -29,6 +29,10 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const squadMode = useSquadStore((s) => s.config.mode)
   const ex = student.Skills.E
 
+  // ── EX 等级 ──
+  const slot = slots.find((s) => s.student?.Id === student.Id)
+  const exLevel = slot?.exLevel ?? 5
+
   /** Cost 时间线（用于查询任意时点的 Cost） */
   const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
 
@@ -152,7 +156,7 @@ function toArray(v: string | string[] | undefined): string[] {
   const totalFrames = min * 1800 + sec * 30 + frame
 
   // ── Cost 充足性检测 ──
-  const skillCost = ex.Cost[0] * COST_SCALE
+  const skillCost = ex.Cost[exLevel - 1] * COST_SCALE
   const availableCost = costAtFrame(costTimeline, totalFrames)
   const hasEnoughCost = availableCost >= skillCost
 
@@ -191,22 +195,33 @@ function toArray(v: string | string[] | undefined): string[] {
     addSkillBlock(slotIndex, {
       type: 'ex', name: ex.Name, startFrame: totalFrames,
       studentId: student.Id, targetId: effectiveTargetId(),
-      skillCost: ex.Cost[0], skillDuration: ex.Duration,
+      skillCost: ex.Cost[exLevel - 1], skillDuration: ex.Duration,
     })
   }
 
   return (
     <div className="rounded p-3 border" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
-      {/* 头像 + 技能图标 + 技能名 · COST 右上 */}
+      {/* 技能图标 + 技能名 · COST 右上 */}
       <div className="flex items-start gap-2.5 mb-3">
-        <img src={`/icons/${student.Icon}.webp`} alt="" className="w-9 h-9 rounded-lg shrink-0 bg-gray-700 mt-0.5" />
         <SkillIcon icon={ex.Icon} bulletType={student.BulletType} size={28} />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{ex.Name}</div>
         </div>
-        <span className="font-game text-base shrink-0" style={{ color: 'var(--text-primary)' }}>
-          COST {ex.Cost[0]}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="font-game text-base" style={{ color: 'var(--text-primary)' }}>
+            COST {ex.Cost[exLevel - 1]}
+          </span>
+          <select
+            value={exLevel}
+            onChange={(e) => useSquadStore.getState().setSkillLevel(slotIndex, 'ex', Number(e.target.value))}
+            className="text-[10px] px-1 py-0.5 rounded border"
+            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
+          >
+            {[1, 2, 3, 4, 5].map((l) => (
+              <option key={l} value={l}>Lv.{l}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* 时间输入：一行 a m b s c ms / d f */}

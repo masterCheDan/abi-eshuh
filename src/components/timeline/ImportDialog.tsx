@@ -61,6 +61,9 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
         label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - 3}`,
         student,
         locked: !!student,
+        exLevel: 5,
+        nsLevel: 10,
+        ssLevel: 10,
       })
 
       newLanes.push({

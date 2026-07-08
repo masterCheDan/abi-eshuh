@@ -6,6 +6,7 @@ import { useThemeStore, type ThemeMode } from './stores/useThemeStore'
 import { Timeline } from './components/timeline/Timeline'
 import { EventLog } from './components/timeline/EventLog'
 import { SquadPanel } from './components/squad/SquadPanel'
+import { CardOrderEditor } from './components/squad/CardOrderEditor'
 import { SkillPanel } from './components/skill-panel/SkillPanel'
 import { I18nProvider, useI18n } from './i18n'
 import type { SupportedLocale } from './i18n'
@@ -71,8 +72,9 @@ function AppContent() {
       {/* 主内容区 */}
       <div className="flex-1 flex gap-4 p-4 overflow-hidden">
         {/* 左侧面板 */}
-        <aside className="w-[500px] shrink-0 flex flex-col gap-3 overflow-y-auto">
+        <aside className="shrink-0 flex flex-col gap-3 overflow-y-auto" style={{ width: 'clamp(400px, 28vw, 580px)' }}>
           <SquadPanel />
+          <CardOrderEditor />
           <SkillPanel />
         </aside>
 
@@ -81,7 +83,7 @@ function AppContent() {
           <div className="flex-1 min-w-0">
             <Timeline />
           </div>
-          <aside className="w-64 shrink-0">
+          <aside className="shrink-0" style={{ width: 'clamp(200px, 14vw, 300px)' }}>
             <EventLog />
           </aside>
         </main>
