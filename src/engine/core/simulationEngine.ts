@@ -100,9 +100,45 @@ export class SimulationEngine {
     const costTimeline = computeCostTimeline(this.lanes, this.formation.mode, maxFrame)
     const costHistory: number[] = []
 
+    // ── 实时 Cost 追踪（用于正确的消耗校验）──
+    const maxCost = (this.formation.mode === 'normal' ? 10 : 20) * COST_SCALE
+    const activeLanes = this.lanes.filter(l => l.student)
+    const baseRegen = activeLanes.reduce((sum, l) => sum + (l.student!.Regen || 700), 0)
+
+    const regChanges: { frame: number; delta: number; endFrame: number }[] = []
+    for (const lane of activeLanes) {
+      const s = lane.student!
+      const scan = (effects: typeof s.Skills.E.Effects, applyFrame: number, start: number) => {
+        for (const ef of effects) {
+          if (ef.Type !== 'CostChange' || ef.ValueType !== 'BaseAmount') continue
+          const af = ef.ApplyFrame ?? applyFrame
+          const amount = ef.Scale ? ef.Scale[ef.Scale.length - 1] : 0
+          regChanges.push({ frame: start + af, delta: amount, endFrame: 5400 })
+        }
+      }
+      scan(s.Skills.PS.Effects, 0, 0)
+      scan(s.Skills.WP.Effects, 0, 0)
+      scan(s.Skills.EP.Effects, 0, 0)
+    }
+    let availableCost = 0
+    let currentRegen = baseRegen + regChanges.filter(r => r.frame === 0).reduce((s, r) => s + r.delta, 0)
+    const regStartEvents = regChanges.filter(r => r.frame > 0).sort((a, b) => a.frame - b.frame)
+    const regEndEvents = regChanges.filter(r => r.endFrame < maxFrame).sort((a, b) => a.endFrame - b.endFrame)
+    let regStartIdx = 0
+    let regEndIdx = 0
+
     // ── Tick Pipeline ──
     for (let frame = 0; frame <= maxFrame; frame++) {
       // Step 1: Clock Update (already done by loop)
+      while (regStartIdx < regStartEvents.length && regStartEvents[regStartIdx].frame === frame) {
+        currentRegen += regStartEvents[regStartIdx].delta
+        regStartIdx++
+      }
+      while (regEndIdx < regEndEvents.length && regEndEvents[regEndIdx].endFrame === frame) {
+        currentRegen -= regEndEvents[regEndIdx].delta
+        regEndIdx++
+      }
+      availableCost = Math.min(maxCost, Math.max(0, availableCost + currentRegen))
       // Step 2: Buff/CC Update
       this.updateCC(runtimes, frame)
       costHistory.push(costAtFrame(costTimeline, frame))
@@ -148,7 +184,8 @@ export class SimulationEngine {
             })
             // 不阻断推演，仅记录
           }
-          if (costAtFrame(costTimeline, Math.max(0, frame - 1)) < (student.Skills.E.Cost[(this.formation.skillLevels?.[slot] ?? 5) - 1]) * COST_SCALE) {
+          const skillCostScaled = (student.Skills.E.Cost[(this.formation.skillLevels?.[slot] ?? 5) - 1]) * COST_SCALE
+          if (availableCost < skillCostScaled) {
             errors.push({
               frame,
               issuerId: intent.issuerId,
@@ -156,6 +193,7 @@ export class SimulationEngine {
               type: 'COST_EXCEEDED',
             })
           }
+          availableCost = Math.max(0, availableCost - skillCostScaled)
         }
 
         this.applyIntent(intent, runtime, student, frame, actionLogs)
