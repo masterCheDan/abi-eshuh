@@ -57,7 +57,7 @@ export function TriggerTrack({ lane, pxPerFrame }: TriggerTrackProps) {
 
   return (
     <div className="flex border-b border-gray-800/20" style={{ height: TRACK_HEIGHT }}>
-      <div className="sticky left-0 z-10 shrink-0 w-36 border-r border-gray-800/20" />
+      <div className="sticky left-0 z-10 shrink-0 w-20 border-r border-gray-800/20" />
       <div className="relative flex-1">
         {triggers.map((t, i) => (
           <div

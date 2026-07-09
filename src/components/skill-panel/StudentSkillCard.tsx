@@ -6,34 +6,15 @@ import { ExSkillCard } from './ExSkillCard'
 import { ExtraSkillCard } from './ExtraSkillCard'
 import { getNsSkill } from '../../utils/nsTrigger'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
+import { SkillIcon } from './SkillIcon'
+import { useBossStore } from '../../stores/useBossStore'
 
 interface StudentSkillCardProps {
     student: Student
 }
 
-/** 学校标签色 */
-const SCHOOL_COLORS: Record<string, string> = {
-    Abydos: '#eab308', Gehenna: '#ef4444', Millennium: '#3b82f6',
-    Trinity: '#a855f7', Hyakkiyako: '#06b6d4', Arius: '#78716c',
-    SRT: '#22c55e', Shanhaijing: '#f97316', Valkyrie: '#6366f1',
-    RedWinter: '#ec4899', WildHunt: '#84cc16', Highlander: '#8b5cf6',
-    ETC: '#6b7280',
-}
-
-const SCHOOL_LABELS: Record<string, string> = {
-    Abydos: '阿比多斯', Arius: '阿里乌斯', Gehenna: '格黑娜',
-    Hyakkiyako: '百鬼夜行', Millennium: '千禧年', RedWinter: '红冬',
-    SRT: 'SRT', Shanhaijing: '山海经', Trinity: '三一',
-    Valkyrie: '瓦尔基里', WildHunt: '狂猎', Highlander: '海兰德',
-    Sakugawa: '其他', Tokiwadai: '其他', ETC: '其他',
-}
-
 const ROLE_LABELS: Record<string, string> = {
     DamageDealer: '输出', Healer: '治疗', Supporter: '辅助', Tanker: '坦克', Vehicle: '载具',
-}
-
-const ROLE_COLORS: Record<string, string> = {
-    DamageDealer: '#ef4444', Healer: '#22c55e', Supporter: '#3b82f6', Tanker: '#f97316', Vehicle: '#a855f7',
 }
 
 const ARMOR_LABELS: Record<string, string> = {
@@ -54,6 +35,12 @@ const ARMOR_COLORS: Record<string, string> = {
     CompositeArmor: '#22c55e', ElasticArmor: '#c97eff', Unarmed: '#4f90ff',
 }
 
+const TERRAINS: { key: string; label: string }[] = [
+    { key: 'Street', label: '街道' },
+    { key: 'Outdoor', label: '户外' },
+    { key: 'Indoor', label: '室内' },
+]
+
 export function StudentSkillCard({ student }: StudentSkillCardProps) {
     const [collapsed, setCollapsed] = useState(false)
     const slots = useSquadStore((s) => s.config.slots)
@@ -61,9 +48,8 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
     const slotIndex = slot?.index ?? -1
     const nsLevel = slot?.nsLevel ?? 10
     const ssLevel = slot?.ssLevel ?? 10
+    const selectedBossTerrain = useBossStore((s) => s.selectedTerrain)
 
-    const schoolColor = SCHOOL_COLORS[student.School] || '#6b7280'
-    const roleColor = ROLE_COLORS[student.TacticRole] || '#6b7280'
 
     const ns = getNsSkill(student)
     const ep = student.Skills.EP
@@ -85,25 +71,56 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
                         </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {/* 学校logo（暂缺时自动隐藏） */}
+                        {/* 学校logo */}
                         <img
-                            src={`/logos/schools/${student.School}.webp`}
+                            src={`${import.meta.env.BASE_URL}logos/schools/${student.School}.png`}
                             alt=""
                             className="w-4 h-4 rounded shrink-0 object-contain"
                             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${schoolColor}18`, color: schoolColor }}>
-                            {SCHOOL_LABELS[student.School] || student.School}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${roleColor}18`, color: roleColor }}>
-                            {ROLE_LABELS[student.TacticRole] || student.TacticRole}
-                        </span>
+                        {/* 角色定位图标 */}
+                        <img
+                            src={`${import.meta.env.BASE_URL}ui/Role_${student.TacticRole}.png`}
+                            alt=""
+                            className="w-4 h-4 object-contain"
+                            title={ROLE_LABELS[student.TacticRole] || student.TacticRole}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${BULLET_COLORS[student.BulletType] || '#6b7280'}18`, color: BULLET_COLORS[student.BulletType] || '#6b7280' }}>
                             {BULLET_LABELS[student.BulletType] || student.BulletType}
                         </span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${ARMOR_COLORS[student.ArmorType] || '#6b7280'}18`, color: ARMOR_COLORS[student.ArmorType] || '#6b7280' }}>
                             {ARMOR_LABELS[student.ArmorType] || student.ArmorType}
                         </span>
+                    </div>
+                    {/* 地形适性 */}
+                    <div className="flex items-center gap-1.5 mt-1">
+                        {TERRAINS.map((tk) => {
+                            const adaptValue = student[tk.key as keyof Student] as number
+                            const isActive = tk.key === selectedBossTerrain
+                            return (
+                                <div
+                                    key={tk.key}
+                                    className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg ${isActive ? 'border' : ''}`}
+                                    style={{
+                                        background: isActive ? 'rgba(59,130,246,0.2)' : 'transparent',
+                                        borderColor: isActive ? 'rgba(59,130,246,0.5)' : 'transparent',
+                                    }}
+                                >
+                                    <img
+                                        src={`${import.meta.env.BASE_URL}ui/Terrain_${tk.key}.png`}
+                                        alt=""
+                                        className="w-3.5 h-3.5 object-contain"
+                                    />
+                                    <img
+                                        src={`${import.meta.env.BASE_URL}ui/Adaptresult${adaptValue}.png`}
+                                        alt=""
+                                        className="w-3 h-3 object-contain"
+                                        title={`${tk.label}适性`}
+                                    />
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
                 {/* 星级 */}
@@ -174,11 +191,7 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
     return (
         <div className="rounded-lg border" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.15)' }}>
-                    <svg className="w-3.5 h-3.5" style={{ color: '#10b981' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                </div>
+                <SkillIcon icon={ns.Icon} bulletType={student.BulletType} size={24} />
                 <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                         <span className="text-[10px] font-bold uppercase px-1 py-0.5 rounded font-game" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>NS</span>
@@ -244,11 +257,7 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
     return (
         <div className="rounded-lg border" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.15)' }}>
-                    <svg className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.5 5.5L21 11l-5.5 2.5L13 19l-2.5-5.5L5 11l5.5-2.5L13 3z" />
-                    </svg>
-                </div>
+                <SkillIcon icon={ep.Icon} bulletType={student.BulletType} size={24} />
                 <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                         <span className="text-[10px] font-bold uppercase px-1 py-0.5 rounded font-game" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>SS</span>

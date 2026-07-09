@@ -8,6 +8,7 @@
  */
 
 import { useMemo } from 'react'
+import { useI18n } from '../../i18n'
 
 interface BossTrackProps {
   totalWidth: number
@@ -42,6 +43,7 @@ export function BossTrack({
   bossName,
   armorType,
 }: BossTrackProps) {
+  const { t } = useI18n()
   const durationSec = useMemo(() => totalFrames / 30, [totalFrames])
 
   if (!bossName) {
@@ -55,11 +57,11 @@ export function BossTrack({
     <div className="flex border-b" style={{ height: TRACK_HEIGHT, borderColor: 'var(--border)' }}>
       {/* 左侧标签 */}
       <div
-        className="sticky left-0 z-10 shrink-0 w-36 border-r flex items-center px-3"
+        className="sticky left-0 z-10 shrink-0 w-20 border-r flex items-center px-3"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         <span className="text-[10px] font-game tracking-wider" style={{ color: 'var(--text-muted)' }}>
-          BOSS
+          {t.boss_track.label}
         </span>
       </div>
 

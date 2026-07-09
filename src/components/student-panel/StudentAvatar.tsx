@@ -18,7 +18,7 @@ export function StudentAvatar({ student, size = 44 }: StudentAvatarProps) {
     >
       {showImg ? (
         <img
-          src={`/icons/${student.Icon}.webp`}
+          src={`${import.meta.env.BASE_URL}icons/${student.Icon}.webp`}
           alt=""
           className="w-full h-full object-cover"
           onError={() => setImgError(true)}

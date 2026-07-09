@@ -1,5 +1,5 @@
 /**
- * SimulationStore — 订阅 TimelineStore + SquadStore 变更，
+ * SimulationStore — 订阅 TimelineStore + SquadStore + BossStore 变更，
  * 自动调用 Engine.simulate() 产出 SimulationResult。
  *
  * SDD §2: UI 交互 → Intent List → Engine.simulate() → SimulationResult → React
@@ -11,6 +11,9 @@ import { runSimulation } from '../engine/bridge'
 import { useTimelineStore } from './useTimelineStore'
 import { useStudentStore } from './useStudentStore'
 import { useSquadStore } from './useSquadStore'
+import { useBossStore } from './useBossStore'
+
+const TERRAIN_INDEX: Record<string, number> = { Street: 0, Outdoor: 1, Indoor: 2 }
 
 interface SimulationStore {
   /** 最近一次推演结果 */
@@ -29,6 +32,8 @@ export const useSimulationStore = create<SimulationStore>((set) => {
     const lanes = useTimelineStore.getState().lanes
     const studentDb = useStudentStore.getState().students
     const deckOrder = useSquadStore.getState().deckOrder
+    // 读取 Boss 配置
+    const bossState = useBossStore.getState()
     if (!studentDb) {
       set({ result: null, computing: false })
       return
@@ -39,17 +44,29 @@ export const useSimulationStore = create<SimulationStore>((set) => {
       Object.entries(studentDb).map(([k, v]) => [parseInt(k), v]),
     )
 
-    const result = runSimulation(lanes, students, undefined, undefined, undefined, undefined, deckOrder)
+    const result = runSimulation(
+      lanes, students,
+      bossState.selectedBossId || undefined,
+      bossState.selectedDifficulty,
+      bossState.selectedArmorType,
+      TERRAIN_INDEX[bossState.selectedTerrain] ?? 0,
+      deckOrder,
+    )
     set({ result, computing: false })
   }
 
-  // 订阅 TimelineStore + SquadStore 变更 → 自动推演（防抖 200ms）
+  // 订阅 TimelineStore + SquadStore + BossStore 变更 → 自动推演（防抖 200ms）
   useTimelineStore.subscribe(() => {
     if (debounceTimer) clearTimeout(debounceTimer)
     set({ computing: true })
     debounceTimer = setTimeout(doSimulate, 200)
   })
   useSquadStore.subscribe(() => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    set({ computing: true })
+    debounceTimer = setTimeout(doSimulate, 200)
+  })
+  useBossStore.subscribe(() => {
     if (debounceTimer) clearTimeout(debounceTimer)
     set({ computing: true })
     debounceTimer = setTimeout(doSimulate, 200)

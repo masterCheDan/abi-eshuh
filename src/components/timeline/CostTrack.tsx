@@ -65,8 +65,8 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
     if (lanes.every(l => !l.student)) {
         return (
             <div className="flex border-b shrink-0" style={{ height: HEIGHT, borderColor: 'var(--border-light)' }}>
-                <div className="sticky left-0 z-10 flex items-center px-3 border-r shrink-0 w-36" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
-                    <span className="text-xs text-gray-600 uppercase">Cost</span>
+                <div className="sticky left-0 z-10 flex items-center justify-center px-2 border-r shrink-0 w-20" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+                    <span className="text-xs font-game text-gray-300 uppercase">Cost</span>
                 </div>
                 <div className="relative flex-1" />
             </div>
@@ -78,8 +78,8 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
 
     return (
         <div className="flex border-b shrink-0" style={{ height: HEIGHT, borderColor: 'var(--border-light)' }}>
-            <div className="sticky left-0 z-10 flex items-center px-3 border-r shrink-0 w-36" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
-                <span className="text-xs text-gray-600 uppercase">Cost</span>
+            <div className="sticky left-0 z-10 flex items-center justify-center px-2 border-r shrink-0 w-20" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+                <span className="text-xs font-game text-gray-300 uppercase">Cost</span>
             </div>
 
             <div

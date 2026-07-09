@@ -8,6 +8,7 @@ import { EventLog } from './components/timeline/EventLog'
 import { SquadPanel } from './components/squad/SquadPanel'
 import { CardOrderEditor } from './components/squad/CardOrderEditor'
 import { SkillPanel } from './components/skill-panel/SkillPanel'
+import { BossPanel } from './components/boss-panel/BossPanel'
 import { I18nProvider, useI18n } from './i18n'
 import type { SupportedLocale } from './i18n'
 
@@ -73,6 +74,7 @@ function AppContent() {
       <div className="flex-1 flex gap-4 p-4 overflow-hidden">
         {/* 左侧面板 */}
         <aside className="shrink-0 flex flex-col gap-3 overflow-y-auto" style={{ width: 'clamp(400px, 28vw, 580px)' }}>
+          <BossPanel />
           <SquadPanel />
           <CardOrderEditor />
           <SkillPanel />

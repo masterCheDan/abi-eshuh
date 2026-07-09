@@ -30,9 +30,15 @@ dist-ssr
 # Scratch / analysis files
 string_target_students.txt
 
+# Scripts (not committed)
+scripts/fetch-images.mjs
+
 # Env files
 .env
 .env.*
+
+# Data files (dynamic/auto-generated, not committed)
+data/raids.json
 
 # OS files
 .DS_Store

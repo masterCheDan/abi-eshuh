@@ -4,6 +4,19 @@ export const en: LanguagePack = {
   app: {
     title: 'Abi-Eshuh — Blue Archive Skill Planner',
   },
+  boss: {
+    title: 'Target Config',
+    boss_label: 'Enemy',
+    terrain: 'Terrain',
+    difficulty: 'Difficulty',
+    armor: 'Armor',
+    grand_assault_hint: '(selectable for Grand Assault)',
+    default_armor: 'Default Armor',
+    duration: 'Duration',
+  },
+  boss_track: {
+    label: 'Enemy Status',
+  },
   squad: {
     title: 'Team Setup',
     normal: '4 + 2',
@@ -21,7 +34,7 @@ export const en: LanguagePack = {
     added: 'Added',
   },
   skill: {
-    title: 'Skills',
+    title: 'Student Skills',
     empty: 'Please add students in Team Setup first',
     cost: 'COST {cost}',
     anim_frames: '{n} frames',
@@ -38,6 +51,7 @@ export const en: LanguagePack = {
     target_none: 'Not selected',
   },
   timeline: {
+    title: 'Timeline Preview',
     empty_hint: 'Drag skills here',
     zoom_hint: 'Ctrl+Scroll to zoom',
     export: 'Export',

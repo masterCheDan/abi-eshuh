@@ -233,8 +233,8 @@ export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
 
     return (
         <div className="flex border-b" style={{ borderColor: 'var(--border-light)', background: 'var(--bg-app)', height: trackHeight }}>
-            <div className="sticky left-0 z-10 flex items-center px-3 border-r shrink-0 w-36" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
-                <span className="text-[9px] text-gray-600 uppercase">buffs</span>
+            <div className="sticky left-0 z-10 flex items-center justify-center px-2 border-r shrink-0 w-20" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+                <span className="text-xs font-game text-gray-300 uppercase">buffs</span>
             </div>
 
             <div className="relative flex-1">
@@ -276,7 +276,7 @@ export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
                                     {/* 2. 来源 */}
                                     <div className="flex items-center gap-2.5 mb-2">
                                         <img
-                                            src={`/icons/${bar.casterIcon}.webp`}
+                                            src={`${import.meta.env.BASE_URL}icons/${bar.casterIcon}.webp`}
                                             alt={bar.casterName}
                                             className="w-8 h-8 rounded-lg shrink-0 bg-gray-700"
                                         />

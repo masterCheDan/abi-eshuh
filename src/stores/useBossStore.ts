@@ -2,11 +2,11 @@
  * Boss 数据 Store
  *
  * 从 public/data/bosses.min.json 加载 14 名总力战 Boss 元数据。
- * 用户选择 Boss + 难度后，通过 Engine Bridge 影响 BattleEnv。
+ * 用户选择 Boss + 难度 + 地形 + 装甲后，通过 Engine Bridge 影响 BattleEnv。
  */
 
 import { create } from 'zustand'
-import type { BossData } from '../types/boss'
+import type { BossData, BossTerrain, BossArmorType } from '../types/boss'
 
 interface BossState {
     /** 全部 Boss 数据（以 ID 为 key） */
@@ -15,6 +15,10 @@ interface BossState {
     selectedBossId: number
     /** 当前选中的难度 (0-7) */
     selectedDifficulty: number
+    /** 当前选中的地形 */
+    selectedTerrain: BossTerrain
+    /** 当前选中的 Boss 装甲类型（大决战可自选） */
+    selectedArmorType: BossArmorType
     /** 加载状态 */
     loading: boolean
 
@@ -24,6 +28,10 @@ interface BossState {
     selectBoss: (id: number) => void
     /** 选择难度 */
     selectDifficulty: (d: number) => void
+    /** 选择地形 */
+    selectTerrain: (t: BossTerrain) => void
+    /** 选择装甲类型 */
+    selectArmorType: (a: BossArmorType) => void
     /** 获取当前选中的 Boss */
     getSelectedBoss: () => BossData | null
 }
@@ -32,6 +40,8 @@ export const useBossStore = create<BossState>((set, get) => ({
     bosses: null,
     selectedBossId: 0,
     selectedDifficulty: 4, // 默认 Extreme
+    selectedTerrain: 'Street',
+    selectedArmorType: 'HeavyArmor',
     loading: false,
 
     loadBosses: async () => {
@@ -47,9 +57,22 @@ export const useBossStore = create<BossState>((set, get) => ({
         }
     },
 
-    selectBoss: (id) => set({ selectedBossId: id }),
+    selectBoss: (id) => {
+        // 切换 Boss 时自动更新地形和装甲为 Boss 的默认值
+        const { bosses } = get()
+        const boss = bosses?.[String(id)]
+        set({
+            selectedBossId: id,
+            selectedTerrain: boss?.Terrain[0] ?? 'Street',
+            selectedArmorType: boss?.ArmorType ?? 'HeavyArmor',
+        })
+    },
 
     selectDifficulty: (d) => set({ selectedDifficulty: d }),
+
+    selectTerrain: (t) => set({ selectedTerrain: t }),
+
+    selectArmorType: (a) => set({ selectedArmorType: a }),
 
     getSelectedBoss: () => {
         const { bosses, selectedBossId } = get()

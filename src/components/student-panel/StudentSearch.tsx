@@ -341,21 +341,12 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      {/* 学校logo（暂缺时自动隐藏） */}
+                      {/* 学校logo */}
                       <img
-                        src={`/logos/schools/${student.School}.webp`}
+                        src={`${import.meta.env.BASE_URL}logos/schools/${student.School}.png`}
                         alt=""
                         className="w-3.5 h-3.5 rounded shrink-0 object-contain"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
-                      {/* 学校色块（logo加载成功后作为后备） */}
-                      <span
-                        className="w-1.5 h-1.5 rounded-full shrink-0"
-                        style={{
-                          background:
-                            SCHOOLS.find((sc) => sc.key === student.School)
-                              ?.color ?? '#888',
-                        }}
                       />
                       <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                         {SCHOOLS.find((sc) => sc.key === student.School)?.label ??
@@ -485,11 +476,13 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
                             onChange={() => toggleFilter(section.type, opt.key)}
                             className="accent-[color:var(--accent)] w-3 h-3 cursor-pointer"
                           />
-                          {/* 学校小色点 */}
+                          {/* 学校图标 */}
                           {section.type === 'school' && opt.key && (
-                            <span
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ background: (opt as { color?: string }).color ?? '#888' }}
+                            <img
+                              src={`${import.meta.env.BASE_URL}logos/schools/${opt.key}.png`}
+                              alt=""
+                              className="w-4 h-4 rounded shrink-0 object-contain"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                             />
                           )}
                           <span

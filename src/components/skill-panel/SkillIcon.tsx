@@ -16,7 +16,7 @@ const BULLET_COLORS: Record<BulletType, string> = {
 /** 从技能 Icon 字段推导文件名（SchaleDB 格式） */
 function skillIconSrc(iconField: string): string {
   if (!iconField) return ''
-  return `/skills/${iconField}.webp`
+  return `${import.meta.env.BASE_URL}skills/${iconField}.webp`
 }
 
 interface SkillIconProps {
@@ -56,7 +56,7 @@ export function SkillIcon({ icon, bulletType, size = 32, bgAlpha = 1 }: SkillIco
         <img
           src={skillIconSrc(icon)}
           alt=""
-          className="absolute inset-0 w-full h-full object-contain p-[15%]"
+          className="absolute inset-0 w-full h-full object-contain p-[10%]"
           style={{ filter: 'brightness(0) invert(1)' }}
           loading="lazy"
         />

@@ -5,6 +5,7 @@ import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { DRAG_SKILL_KEY } from '../skill-panel/SkillAddForm'
 import { SkillIcon } from '../skill-panel/SkillIcon'
+import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { studentSkillStyles } from '../../utils/studentColors'
 import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
 import type { CostFrame } from '../../utils/costCalc'
@@ -203,7 +204,7 @@ function computeSkillRows(
 
 export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, highlightedFrame }: TimelineLaneProps) {
   const { t } = useI18n()
-  const { label, student, studentId, skills, slotIndex } = lane
+  const { student, studentId, skills, slotIndex } = lane
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const moveSkillBlock = useTimelineStore((s) => s.moveSkillBlock)
   const removeSkillBlock = useTimelineStore((s) => s.removeSkillBlock)
@@ -431,32 +432,14 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
       className="flex border-b last:border-b-0"
       style={{ height: LANE_HEIGHT, borderColor: 'var(--border-light)' }}
     >
-      {/* 左侧固定标签 */}
-      <div className="sticky left-0 z-10 flex items-center gap-2 px-3 border-r shrink-0 w-36" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
-        <div
-          className={`w-7 h-7 rounded-lg flex items-center justify-center text-[11px] shrink-0 ${student ? 'bg-gray-700 text-gray-300' : 'bg-gray-800 text-gray-600'
-            }`}
-        >
-          {student ? student.Name.charAt(0) : '?'}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-xs leading-tight">
-            {student ? (
-              <span className={`font-game text-xs ${label.startsWith('STRIKER') ? 'text-red-500' : 'text-blue-400'}`}>
-                {label}
-              </span>
-            ) : (
-              <span className="font-game text-[11px] text-gray-600">{label}</span>
-            )}
-          </div>
-          {student && (
-            <div className="text-[9px] text-gray-500 leading-tight truncate">
-              {student.Name}
-            </div>
-          )}
-        </div>
-        {/* 折叠/展开切换 */}
-        {student && onToggleCollapse && (
+      {/* 左侧固定标签：仅头像 */}
+      <div className="sticky left-0 z-10 flex items-center justify-center gap-1 px-2 border-r shrink-0 w-20" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+        {student ? (
+          <StudentAvatar student={student} size={36} />
+        ) : (
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] shrink-0 bg-gray-800 text-gray-600">?</div>
+        )}
+        {onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
             className="w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 text-[10px] shrink-0"
@@ -626,7 +609,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
                   <div className="rounded-lg border shadow-xl p-3 bg-gray-800 border-gray-700 text-gray-200 whitespace-nowrap min-w-[230px]">
                     {/* 1. 释放者 */}
                     <div className="flex items-center gap-2 mb-2">
-                      <img src={`/icons/${student.Icon}.webp`} alt="" className="w-7 h-7 rounded-lg shrink-0 bg-gray-700" />
+                      <img src={`${import.meta.env.BASE_URL}icons/${student.Icon}.webp`} alt="" className="w-7 h-7 rounded-lg shrink-0 bg-gray-700" />
                       <span className="text-sm font-medium text-gray-100">{student.Name}</span>
                     </div>
                     {/* 2. 技能 */}

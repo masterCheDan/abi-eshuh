@@ -84,14 +84,14 @@ export function EventLog() {
                   </div>
                 </div>
                 <div className="ml-4 mt-1.5 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
-                  <img src={`/icons/${ev.casterIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
+                  <img src={`${import.meta.env.BASE_URL}icons/${ev.casterIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
                   {ev.skillIcon && <SkillIcon icon={ev.skillIcon} bulletType={ev.bulletType} size={18} />}
                   <span className="text-gray-500 text-xs shrink-0">-&gt;</span>
                   {ev.isBoss
                     ? <span className="text-[10px] font-bold text-red-400 px-1 font-game">Boss</span>
                     : ev.isSelf
                       ? <span className="text-[10px] font-bold text-emerald-400 px-1 font-game">自身</span>
-                      : <img src={`/icons/${ev.targetIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
+                      : <img src={`${import.meta.env.BASE_URL}icons/${ev.targetIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
                   }
                 </div>
               </div>

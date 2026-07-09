@@ -4,6 +4,19 @@ export const ja: LanguagePack = {
   app: {
     title: 'Abi-Eshuh — ブルーアーカイブ スキルプランナー',
   },
+  boss: {
+    title: '目標設定',
+    boss_label: '敵選択',
+    terrain: '地形',
+    difficulty: '難易度',
+    armor: '装甲',
+    grand_assault_hint: '（大決戦では選択可能）',
+    default_armor: 'デフォルト装甲',
+    duration: '時間',
+  },
+  boss_track: {
+    label: '敵状態',
+  },
   squad: {
     title: 'チーム編成',
     normal: '4 + 2',
@@ -21,7 +34,7 @@ export const ja: LanguagePack = {
     added: '追加済み',
   },
   skill: {
-    title: 'スキル',
+    title: '学生設定',
     empty: 'まずチーム編成で学生を追加してください',
     cost: 'COST {cost}',
     anim_frames: '{n}フレーム',
@@ -38,6 +51,7 @@ export const ja: LanguagePack = {
     target_none: '未選択',
   },
   timeline: {
+    title: 'タイムライン プレビュー',
     empty_hint: 'ここにスキルをドラッグ',
     zoom_hint: 'Ctrl+スクロールで拡大縮小',
     export: 'エクスポート',

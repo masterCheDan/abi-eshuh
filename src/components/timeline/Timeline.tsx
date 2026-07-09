@@ -8,9 +8,9 @@ import { BuffTrack } from './BuffTrack'
 import { TriggerTrack } from './TriggerTrack'
 import { CostTrack } from './CostTrack'
 import { BossTrack } from './BossTrack'
-import { BossSelector } from './BossSelector'
 import { SimulationErrorPanel } from './SimulationErrorPanel'
 import { TimelineRuler } from './TimelineRuler'
+import { useI18n } from '../../i18n'
 
 const BASE_PX_PER_FRAME = 2
 const ZOOM_STEP = 0.25
@@ -18,6 +18,7 @@ const MIN_ZOOM = 0.5
 const MAX_ZOOM = 8
 
 export function Timeline() {
+  const { t } = useI18n()
   const lanes = useTimelineStore((s) => s.lanes)
   const simResult = useSimulationStore((s) => s.result)
   const simComputing = useSimulationStore((s) => s.computing)
@@ -79,7 +80,7 @@ export function Timeline() {
     <div className="flex flex-col h-full rounded-lg border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>时间轴</span>
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>{t.timeline.title}</span>
           {simComputing && (
             <span className="text-[10px] text-gray-600 animate-pulse">⏳</span>
           )}
@@ -109,7 +110,6 @@ export function Timeline() {
             </span>
           )}
         </div>
-        <BossSelector />
         <div className="flex items-center gap-1">
           <button
             onClick={toggleScrollMode}

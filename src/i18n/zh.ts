@@ -2,6 +2,19 @@ export interface LanguagePack {
   app: {
     title: string
   }
+  boss: {
+    title: string
+    boss_label: string
+    terrain: string
+    difficulty: string
+    armor: string
+    grand_assault_hint: string
+    default_armor: string
+    duration: string
+  }
+  boss_track: {
+    label: string
+  }
   squad: {
     title: string
     normal: string
@@ -36,6 +49,7 @@ export interface LanguagePack {
     target_none: string
   }
   timeline: {
+    title: string
     empty_hint: string
     zoom_hint: string
     export: string
@@ -80,6 +94,19 @@ export const zh: LanguagePack = {
   app: {
     title: 'Abi-Eshuh — 碧蓝档案排轴工具',
   },
+  boss: {
+    title: '目标配置',
+    boss_label: '敌人选择',
+    terrain: '地形',
+    difficulty: '难度',
+    armor: '装甲',
+    grand_assault_hint: '（大决战可自选）',
+    default_armor: '默认装甲',
+    duration: '时长',
+  },
+  boss_track: {
+    label: '敌人状态',
+  },
   squad: {
     title: '队伍配置',
     normal: '4 + 2',
@@ -97,7 +124,7 @@ export const zh: LanguagePack = {
     added: '已添加',
   },
   skill: {
-    title: '技能组件',
+    title: '学生配置',
     empty: '请先在队伍配置中添加学生',
     cost: 'COST {cost}',
     anim_frames: '动画 {n}帧',
@@ -114,6 +141,7 @@ export const zh: LanguagePack = {
     target_none: '未选择',
   },
   timeline: {
+    title: '时间轴预览',
     empty_hint: '拖拽技能到此处',
     zoom_hint: 'Ctrl+滚轮缩放',
     export: '导出',
