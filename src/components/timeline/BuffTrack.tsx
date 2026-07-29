@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { Student } from '../../types/student'
 import type { StudentLane } from '../../types/timeline'
 import { useTimelineStore } from '../../stores/useTimelineStore'
+import { useThemeStore } from '../../stores/useThemeStore'
 import { studentBuffStyle } from '../../utils/studentColors'
 import { SkillIcon } from '../skill-panel/SkillIcon'
 import type { BulletType } from '../../types/student'
@@ -127,6 +128,8 @@ function computeBuffRows(bars: BuffBar[]): number[] {
 }
 
 export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
+    // 订阅主题以触发 studentBuffStyle 重算
+    useThemeStore((s) => s.resolved)
     const allLanes = useTimelineStore((s) => s.lanes)
     const { student } = lane
 

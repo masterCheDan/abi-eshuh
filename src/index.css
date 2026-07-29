@@ -3,116 +3,163 @@
 /* ====== 主题 CSS 变量（默认暗色，.light 覆盖为亮色）====== */
 
 :root {
-  --bg-app: #111827;
-  --bg-surface: #1f2937;
-  --bg-surface-alt: #374151;
-  --bg-hover: rgba(255, 255, 255, 0.05);
-  --border: #374151;
-  --border-light: #1f2937;
-  --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --accent: #3b82f6;
-  --accent-soft: rgba(59, 130, 246, 0.15);
+  --bg-app: #0A1420;
+  --bg-surface: #101F31;
+  --bg-surface-alt: #18293D;
+  --bg-hover: rgba(62, 198, 255, 0.07);
+  --border: #20395A;
+  --border-light: #16283F;
+  --text-primary: #E6F1FA;
+  --text-secondary: #9DB8CE;
+  --text-muted: #647F97;
+  --accent: #3EC6FF;
+  --accent-soft: rgba(62, 198, 255, 0.15);
+  --accent-2: #FF8A3D;
+  --accent-2-soft: rgba(255, 138, 61, 0.15);
+  --glow-cyan: rgba(62, 198, 255, 0.50);
+  --grid-line: rgba(110, 180, 235, 0.08);
+  --panel-highlight: rgba(150, 220, 255, 0.06);
+  --cost: #FACC15;
+  --cost-soft: rgba(250, 204, 21, 0.18);
+  --ok: #34D399;
+  --warn: #FBBF24;
+  --danger: #F87171;
   color-scheme: dark;
 }
 
 .light {
-  --bg-app: #f3f4f6;
-  --bg-surface: #ffffff;
-  --bg-surface-alt: #f9fafb;
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --border: #d1d5db;
-  --border-light: #e5e7eb;
-  --text-primary: #0f172a;
-  --text-secondary: #1f2937;
-  --text-muted: #374151;
-  --accent: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.10);
+  --bg-app: #E9F1F8;
+  --bg-surface: #FFFFFF;
+  --bg-surface-alt: #F3F8FC;
+  --bg-hover: rgba(2, 135, 200, 0.07);
+  --border: #C6DBEB;
+  --border-light: #E0EBF4;
+  --text-primary: #102A40;
+  --text-secondary: #38536C;
+  --text-muted: #64809A;
+  --accent: #0287C8;
+  --accent-soft: rgba(2, 135, 200, 0.12);
+  --accent-2: #F97316;
+  --accent-2-soft: rgba(249, 115, 22, 0.12);
+  --glow-cyan: rgba(14, 165, 233, 0.35);
+  --grid-line: rgba(23, 93, 148, 0.10);
+  --panel-highlight: rgba(255, 255, 255, 0.7);
+  --cost: #D9A406;
+  --cost-soft: rgba(217, 164, 6, 0.18);
+  --ok: #059669;
+  --warn: #B45309;
+  --danger: #DC2626;
   color-scheme: light;
 }
 
-/* 亮色主题下，Tailwind 灰色文字自动加深 */
+/* 暗色默认：Tailwind 中性灰 → 钢蓝灰（与海军蓝统一）
+   裸选择器优先级高于 @layer utilities，低于 .light .x */
+.text-gray-200 { color: #DCE9F5; }
+.text-gray-300,
+.text-gray-400 { color: #9DB8CE; }
+.text-gray-500 { color: #647F97; }
+.text-gray-600 { color: #54708A; }
+.bg-gray-600 { background-color: #2A415C; }
+.bg-gray-700 { background-color: #1D3149; }
+.bg-gray-800 { background-color: #16273B; }
+.bg-gray-900 { background-color: #0F1D2E; }
+.border-gray-600 { border-color: #2A415C; }
+.border-gray-700 { border-color: #223A55; }
+.border-gray-800 { border-color: #1B2F47; }
+.bg-gray-700\/50 { background-color: rgba(29, 49, 73, 0.5); }
+.bg-gray-800\/30 { background-color: rgba(22, 39, 59, 0.3); }
+.bg-gray-800\/40 { background-color: rgba(22, 39, 59, 0.4); }
+.bg-gray-800\/50 { background-color: rgba(22, 39, 59, 0.5); }
+.bg-gray-900\/20 { background-color: rgba(15, 29, 46, 0.2); }
+.bg-gray-900\/50 { background-color: rgba(15, 29, 46, 0.5); }
+.border-gray-700\/60 { border-color: rgba(34, 58, 85, 0.6); }
+.border-gray-800\/50 { border-color: rgba(27, 47, 71, 0.5); }
+
+/* 亮色主题下，Tailwind 灰色工具类 → 蓝调灰 */
 .light .text-gray-300,
 .light .text-gray-400 {
-  color: #374151;
+  color: #38536C;
 }
 
 .light .text-gray-500 {
-  color: #4b5563;
+  color: #4A6A88;
 }
 
 .light .text-gray-600 {
-  color: #6b7280;
+  color: #64809A;
 }
 
 .light .bg-gray-600 {
-  background-color: #d1d5db;
+  background-color: #C6DBEB;
 }
 
 .light .bg-gray-700 {
-  background-color: #e5e7eb;
+  background-color: #DCE9F4;
 }
 
 .light .bg-gray-800 {
-  background-color: #f3f4f6;
+  background-color: #ECF3FA;
 }
 
 .light .bg-gray-900 {
-  background-color: #ffffff;
+  background-color: #FFFFFF;
 }
 
 .light .bg-gray-700\/50 {
-  background-color: rgba(229, 231, 235, 0.5);
+  background-color: rgba(220, 233, 244, 0.5);
 }
 
 .light .bg-gray-900\/50 {
   background-color: rgba(255, 255, 255, 0.5);
 }
 
+.light .bg-gray-900\/20 {
+  background-color: rgba(16, 42, 64, 0.04);
+}
+
 .light .border-gray-600 {
-  border-color: #9ca3af;
+  border-color: #A8C4DA;
 }
 
 .light .border-gray-700 {
-  border-color: #d1d5db;
+  border-color: #C6DBEB;
 }
 
 .light .border-gray-800 {
-  border-color: #e5e7eb;
+  border-color: #E0EBF4;
 }
 
 .light .text-gray-200 {
-  color: #1f2937;
+  color: #1E3A52;
 }
 
 .light .bg-gray-800\/40 {
-  background-color: rgba(243, 244, 246, 0.4);
+  background-color: rgba(236, 243, 250, 0.4);
 }
 
 .light .bg-gray-800\/50 {
-  background-color: rgba(243, 244, 246, 0.5);
+  background-color: rgba(236, 243, 250, 0.5);
 }
 
 .light .bg-gray-800\/30 {
-  background-color: rgba(243, 244, 246, 0.3);
+  background-color: rgba(236, 243, 250, 0.3);
 }
 
 .light .border-gray-700\/60 {
-  border-color: rgba(209, 213, 219, 0.6);
+  border-color: rgba(198, 219, 235, 0.6);
 }
 
 .light .border-gray-800\/50 {
-  border-color: rgba(229, 231, 235, 0.5);
+  border-color: rgba(224, 235, 244, 0.5);
 }
 
 /* 滚动条跟随主题 */
 :root {
-  scrollbar-color: #4b5563 #1f2937;
+  scrollbar-color: #20395A #0A1420;
 }
 
 .light {
-  scrollbar-color: #9ca3af #e5e7eb;
+  scrollbar-color: #C6DBEB #E9F1F8;
 }
 
 /* WebKit 滚动条（Chrome/Edge） */
@@ -163,6 +210,62 @@
 @layer utilities {
   .font-game {
     font-family: 'BA-Game', sans-serif;
+  }
+
+  /* ── BA 签名造型 ── */
+  .ba-cut-panel {
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  }
+
+  .ba-cut-btn {
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  }
+
+  .ba-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 var(--panel-highlight);
+  }
+
+  .ba-hex {
+    clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  }
+
+  .ba-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'BA-Game', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+  }
+
+  .ba-eyebrow::before {
+    content: '';
+    width: 10px;
+    height: 2px;
+    background: var(--accent);
+    flex: none;
+  }
+
+  .ba-header {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  .ba-header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 22%, transparent 55%);
+    opacity: 0.8;
+    pointer-events: none;
   }
 }
 

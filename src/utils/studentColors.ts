@@ -3,6 +3,8 @@
  * 根据 slotIndex 分配固定色相，技能块 / Buff 条均从此派生
  */
 
+import { useThemeStore } from '../stores/useThemeStore'
+
 /** 10 种互不相同的色相（对应最多 10 个编队位置） */
 const STUDENT_HUES = [
   { hue: 210, name: 'blue' },       // 前排 1
@@ -38,6 +40,14 @@ export interface StudentSkillColors {
   label: string
 }
 
+/** 主题相关的色阶参数：暗色霓虹感，亮色加深防洗白 */
+function themeLevels() {
+  const dark = useThemeStore.getState().resolved === 'dark'
+  return dark
+    ? { sat: 78, preL: 55, activeL: 55, afterL: 50, borderL: 66, alphaK: 1 }
+    : { sat: 85, preL: 48, activeL: 48, afterL: 45, borderL: 38, alphaK: 0.85 }
+}
+
 /** 从 slotIndex 生成技能块样式 */
 export function studentSkillStyles(
   slotIndex: number,
@@ -51,6 +61,7 @@ export function studentSkillStyles(
   labelClass: string
 } {
   const h = getStudentHue(slotIndex)
+  const lv = themeLevels()
   const heavy = { alpha: 0.65, border: true }
   const light = { alpha: 0.25, border: false }
   const vLight = { alpha: 0.12, border: false }
@@ -61,16 +72,16 @@ export function studentSkillStyles(
 
   return {
     preStyle: {
-      backgroundColor: `hsla(${h}, 70%, 45%, ${preAlpha * opacity})`,
-      ...(damage ? {} : { borderLeft: `2px solid hsl(${h}, 70%, 60%)` }),
+      backgroundColor: `hsla(${h}, ${lv.sat}%, ${lv.preL}%, ${preAlpha * opacity * lv.alphaK})`,
+      ...(damage ? {} : { borderLeft: `2px solid hsl(${h}, ${lv.sat}%, ${lv.borderL}%)` }),
     },
     activeStyle: {
-      backgroundColor: `hsla(${h}, 70%, 50%, ${activeAlpha * opacity})`,
-      ...(damage ? { borderLeft: `2px solid hsl(${h}, 70%, 60%)` } : {}),
+      backgroundColor: `hsla(${h}, ${lv.sat}%, ${lv.activeL}%, ${activeAlpha * opacity * lv.alphaK})`,
+      ...(damage ? { borderLeft: `2px solid hsl(${h}, ${lv.sat}%, ${lv.borderL}%)` } : {}),
     },
     afterStyle: {
-      backgroundColor: `hsla(${h}, 70%, 40%, ${vLight.alpha * opacity})`,
-      borderRight: `1px dashed hsla(${h}, 70%, 55%, 0.4)`,
+      backgroundColor: `hsla(${h}, ${lv.sat}%, ${lv.afterL}%, ${vLight.alpha * opacity * lv.alphaK})`,
+      borderRight: `1px dashed hsla(${h}, ${lv.sat}%, ${lv.borderL}%, 0.4)`,
     },
     labelClass: '',
   }
@@ -85,8 +96,9 @@ export function studentBuffStyle(slotIndex: number, overridden = false): React.C
     }
   }
   const h = getStudentHue(slotIndex)
+  const lv = themeLevels()
   return {
-    backgroundColor: `hsla(${h}, 65%, 45%, 0.35)`,
-    borderLeft: `2px solid hsl(${h}, 65%, 50%)`,
+    backgroundColor: `hsla(${h}, ${lv.sat}%, ${lv.activeL}%, ${0.35 * lv.alphaK})`,
+    borderLeft: `2px solid hsl(${h}, ${lv.sat}%, ${lv.borderL}%)`,
   }
 }

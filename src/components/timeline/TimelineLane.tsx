@@ -3,6 +3,7 @@ import type { DragEvent } from 'react'
 import type { StudentLane, SkillBlock } from '../../types/timeline'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { useThemeStore } from '../../stores/useThemeStore'
 import { DRAG_SKILL_KEY } from '../skill-panel/SkillAddForm'
 import { SkillIcon } from '../skill-panel/SkillIcon'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
@@ -204,6 +205,8 @@ function computeSkillRows(
 
 export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, highlightedFrame }: TimelineLaneProps) {
   const { t } = useI18n()
+  // 订阅主题以触发 studentSkillStyles 重算
+  useThemeStore((s) => s.resolved)
   const { student, studentId, skills, slotIndex } = lane
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const moveSkillBlock = useTimelineStore((s) => s.moveSkillBlock)
@@ -534,7 +537,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
                   {/* Keyframe: 生效帧竖线 */}
                   <div
                     className="absolute top-0 bottom-0 w-px z-10"
-                    style={{ right: 0, background: 'rgba(255,255,255,0.4)', boxShadow: '0 0 2px rgba(255,255,255,0.3)' }}
+                    style={{ right: 0, background: 'var(--accent)', boxShadow: '0 0 6px var(--glow-cyan)' }}
                   />
                 </div>
                 {/* 生效段 */}
@@ -546,7 +549,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
                     className="absolute top-0 bottom-0 w-1 z-10 opacity-60"
                     style={{
                       right: -0.5,
-                      background: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.5) 2px, rgba(255,255,255,0.5) 3px)',
+                      background: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, color-mix(in srgb, var(--text-primary) 45%, transparent) 2px, color-mix(in srgb, var(--text-primary) 45%, transparent) 3px)',
                     }}
                   />
                 </div>
@@ -585,9 +588,9 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
                   <div
                     className="absolute -inset-[2px] rounded-[4px] pointer-events-none z-10"
                     style={{
-                      border: '2px solid #facc15',
-                      background: 'rgba(250,204,21,0.12)',
-                      boxShadow: '0 0 12px 2px rgba(250,204,21,0.45)',
+                      border: '2px solid var(--cost)',
+                      background: 'var(--cost-soft)',
+                      boxShadow: '0 0 12px 2px var(--cost-soft)',
                       animation: 'highlightPulse 1.5s ease-out',
                     }}
                   />

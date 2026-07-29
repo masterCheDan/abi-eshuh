@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
-import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
+import { useSimulationStore } from '../../stores/useSimulationStore'
+import { COST_SCALE } from '../../engine'
 
 interface CostTrackProps {
     pxPerFrame: number
@@ -30,10 +31,11 @@ function formatSecFrame(f: number): string {
 export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
     const lanes = useTimelineStore((s) => s.lanes)
     const mode = useSquadStore((s) => s.config.mode)
+    const result = useSimulationStore((s) => s.result)
     const maxCost = mode === 'normal' ? 10 : 20
     const [hoverInfo, setHoverInfo] = useState<{ frame: number; cost: number; x: number } | null>(null)
 
-    const timeline = useMemo(() => computeCostTimeline(lanes, mode), [lanes, mode])
+    const timeline = useMemo(() => result?.costHistory.map((cost, frame) => ({ frame, cost })) ?? [], [result])
 
     const points = useMemo(() => {
         if (timeline.length === 0) return ''
@@ -57,7 +59,7 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
         const rect = e.currentTarget.getBoundingClientRect()
         const offsetX = e.clientX - rect.left
         const frame = Math.round(Math.max(0, offsetX / pxPerFrame))
-        const cost = costAtFrame(timeline, frame)
+        const cost = timeline[Math.min(frame, timeline.length - 1)]?.cost ?? 0
         setHoverInfo({ frame, cost, x: offsetX })
     }
     const handleMouseLeave = () => setHoverInfo(null)
@@ -97,7 +99,7 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                             <div className="absolute left-0 right-0" style={{
                                 top: 0,
                                 borderTop: '1px dashed',
-                                borderColor: c === 0 ? 'transparent' : 'rgba(250,204,21,0.18)',
+                                borderColor: c === 0 ? 'transparent' : 'var(--cost-soft)',
                             }} />
                             <span className="absolute left-1 text-[10px] text-gray-500 font-game">{c}</span>
                         </div>
@@ -123,8 +125,9 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                                 width: 7,
                                 height: 7,
                                 borderRadius: '50%',
-                                background: 'rgba(250,204,21,0.5)',
-                                boxShadow: '0 0 3px rgba(250,204,21,0.4)',
+                                background: 'var(--cost)',
+                                opacity: 0.5,
+                                boxShadow: '0 0 3px var(--cost-soft)',
                             }}
                         />
                     )
@@ -134,7 +137,7 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                     <polyline
                         points={points}
                         fill="none"
-                        stroke="#facc15"
+                        stroke="var(--cost)"
                         strokeWidth={2.5}
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -144,8 +147,8 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                 {hoverInfo && (
                     <>
                         <div
-                            className="absolute top-0 bottom-0 w-px bg-yellow-400/50 pointer-events-none z-20"
-                            style={{ left: hoverInfo.x }}
+                            className="absolute top-0 bottom-0 w-px pointer-events-none z-20"
+                            style={{ left: hoverInfo.x, background: 'var(--cost)', opacity: 0.5 }}
                         />
                         <div
                             className="absolute z-30 pointer-events-none bg-gray-800 border border-gray-600 rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"
@@ -159,9 +162,9 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                                 ({formatSecFrame(hoverInfo.frame)})
                             </span>
                             {/* COST — 数字font-game, 小数点加粗默认体 */}
-                            <span className="text-xs text-yellow-300 ml-2">
+                            <span className="text-xs ml-2" style={{ color: 'var(--cost)' }}>
                                 <span className="font-game font-semibold">{intPart}</span>
-                                <span className="font-bold text-yellow-400">.</span>
+                                <span className="font-bold">.</span>
                                 <span className="font-game font-semibold">{decPart}</span>
                                 <span className="font-game font-semibold"> COST</span>
                             </span>

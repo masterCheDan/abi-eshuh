@@ -1,19 +1,19 @@
 import { useState, useMemo } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
-import { useI18n } from '../../i18n'
+import { useI18n, tpl } from '../../i18n'
 import { SkillIcon } from '../skill-panel/SkillIcon'
 import { ExportDialog } from './ExportDialog'
 import { ImportDialog } from './ImportDialog'
 import type { BulletType } from '../../types/student'
 
-function formatTime(totalFrames: number): { ms: string; frame: string } {
+function formatTime(totalFrames: number, frameTpl: string): { ms: string; frame: string } {
   const f = totalFrames % 30
   const totalSeconds = Math.floor(totalFrames / 30)
   const ms = Math.round((totalFrames / 30 - totalSeconds) * 1000)
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
   const ss = String(s).padStart(2, '0')
-  return { ms: `${m}:${ss}.${String(ms).padStart(3, '0')}`, frame: `${m}:${ss} 第${f}帧` }
+  return { ms: `${m}:${ss}.${String(ms).padStart(3, '0')}`, frame: tpl(frameTpl, { m, ss, f }) }
 }
 
 export function EventLog() {
@@ -45,9 +45,9 @@ export function EventLog() {
   const DOT_SIZE = 12; const LINE_WIDTH = 2; const LINE_LEFT = 14
 
   return (
-    <div className="rounded-lg overflow-hidden flex flex-col h-full border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+    <div className="ba-panel ba-cut-panel overflow-hidden flex flex-col h-full">
       <div className="px-3 py-1.5 border-b shrink-0 flex items-center justify-between" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
-        <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t.event_log.title}</span>
+        <span className="ba-eyebrow">{t.event_log.title}</span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setShowImport(true)}
@@ -77,10 +77,10 @@ export function EventLog() {
             {events.map((ev, i) => (
               <div key={i} className="relative mb-5 last:mb-0">
                 <div className="flex items-center gap-2">
-                  <div className="absolute rounded-full border-2 z-10" style={{ left: -(LINE_LEFT + DOT_SIZE), top: 6, width: DOT_SIZE, height: DOT_SIZE, background: ev.isBoss ? '#ef4444' : ev.isSelf ? '#10b981' : 'var(--bg-surface)', borderColor: ev.isBoss ? '#ef4444' : ev.isSelf ? '#10b981' : 'var(--border)' }} />
+                  <div className="absolute rounded-full border-2 z-10" style={{ left: -(LINE_LEFT + DOT_SIZE), top: 6, width: DOT_SIZE, height: DOT_SIZE, background: ev.isBoss ? 'var(--danger)' : ev.isSelf ? 'var(--ok)' : 'var(--bg-surface)', borderColor: ev.isBoss ? 'var(--danger)' : ev.isSelf ? 'var(--ok)' : 'var(--border)' }} />
                   <div className="flex items-baseline gap-1.5 font-mono">
-                    <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{formatTime(ev.frame).ms}</span>
-                    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>({formatTime(ev.frame).frame})</span>
+                    <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{formatTime(ev.frame, t.event_log.time_frame_tpl).ms}</span>
+                    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>({formatTime(ev.frame, t.event_log.time_frame_tpl).frame})</span>
                   </div>
                 </div>
                 <div className="ml-4 mt-1.5 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
@@ -88,9 +88,9 @@ export function EventLog() {
                   {ev.skillIcon && <SkillIcon icon={ev.skillIcon} bulletType={ev.bulletType} size={18} />}
                   <span className="text-gray-500 text-xs shrink-0">-&gt;</span>
                   {ev.isBoss
-                    ? <span className="text-[10px] font-bold text-red-400 px-1 font-game">Boss</span>
+                    ? <span className="text-[10px] font-bold text-red-400 px-1 font-game">{t.event_log.target_boss}</span>
                     : ev.isSelf
-                      ? <span className="text-[10px] font-bold text-emerald-400 px-1 font-game">自身</span>
+                      ? <span className="text-[10px] font-bold text-emerald-400 px-1 font-game">{t.event_log.self}</span>
                       : <img src={`${import.meta.env.BASE_URL}icons/${ev.targetIcon}.webp`} alt="" className="w-6 h-6 rounded-lg shrink-0 bg-gray-700" />
                   }
                 </div>

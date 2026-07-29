@@ -15,7 +15,7 @@ export function SquadPanel() {
   const supportSlots = slots.filter((s) => s.slotType === 'Support')
 
   return (
-    <div className="rounded-lg p-3 border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+    <div className="ba-panel ba-cut-panel p-3">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <button
@@ -25,12 +25,12 @@ export function SquadPanel() {
           >
             {collapsed ? '▶' : '▼'}
           </button>
-          <h2 className="text-sm font-semibold text-gray-200">{t.squad.title}</h2>
+          <h2 className="ba-eyebrow">{t.squad.title}</h2>
         </div>
         <select
           value={mode}
           onChange={(e) => setMode(e.target.value as SquadMode)}
-          className="bg-gray-700 text-xs text-gray-300 rounded px-2 py-1 border border-gray-600"
+          className="ba-cut-btn bg-gray-700 text-xs text-gray-300 px-2 py-1 border border-gray-600"
         >
           <option value="normal">{t.squad.normal}</option>
           <option value="total_assault">{t.squad.total_assault}</option>
@@ -40,7 +40,7 @@ export function SquadPanel() {
       {!collapsed && (<>
       <div className="mb-2">
         <div className="mb-1">
-          <span className="font-game text-sm text-red-500 tracking-widest">{t.squad.front}</span>
+          <span className="font-game text-sm tracking-widest" style={{ color: 'var(--accent-2)' }}>{t.squad.front}</span>
         </div>
         <div className="grid grid-cols-2 gap-1.5">
           {mainSlots.map((slot) => (
@@ -51,7 +51,7 @@ export function SquadPanel() {
 
       <div>
         <div className="mb-1">
-          <span className="font-game text-sm text-blue-400 tracking-widest">{t.squad.back}</span>
+          <span className="font-game text-sm tracking-widest" style={{ color: 'var(--accent)' }}>{t.squad.back}</span>
         </div>
         <div className="grid grid-cols-2 gap-1.5">
           {supportSlots.map((slot) => (

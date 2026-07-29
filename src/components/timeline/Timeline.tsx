@@ -10,7 +10,7 @@ import { CostTrack } from './CostTrack'
 import { BossTrack } from './BossTrack'
 import { SimulationErrorPanel } from './SimulationErrorPanel'
 import { TimelineRuler } from './TimelineRuler'
-import { useI18n } from '../../i18n'
+import { useI18n, tpl } from '../../i18n'
 
 const BASE_PX_PER_FRAME = 2
 const ZOOM_STEP = 0.25
@@ -63,7 +63,9 @@ export function Timeline() {
     const handler = (e: WheelEvent) => {
       e.preventDefault()
       if (scrollMode === 'pan') {
-        el.scrollLeft += e.deltaY
+        // deltaMode 1 = 行滚动 (Firefox)，换算为像素
+        const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+        el.scrollLeft += delta
       } else {
         setZoom((prev) => {
           const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
@@ -77,33 +79,33 @@ export function Timeline() {
   }, [scrollMode])
 
   return (
-    <div className="flex flex-col h-full rounded-lg border" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+    <div className="ba-panel ba-cut-panel flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>{t.timeline.title}</span>
+          <span className="ba-eyebrow">{t.timeline.title}</span>
           {simComputing && (
             <span className="text-[10px] text-gray-600 animate-pulse">⏳</span>
           )}
           {summary && summary.total > 0 && (
             <span
               className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-              style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}
+              style={{ background: 'color-mix(in srgb, var(--danger) 15%, transparent)', color: 'var(--danger)' }}
             >
-              {summary.total} 问题
+              {tpl(t.timeline.problems, { n: summary.total })}
             </span>
           )}
           {summary && summary.total === 0 && !simComputing && lanes.some(l => l.student) && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.1)', color: '#34d399' }}>
-              ✓ 合法
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--ok) 10%, transparent)', color: 'var(--ok)' }}>
+              {t.timeline.valid}
             </span>
           )}
           {summary?.window && (
             <span
               className="text-[10px] px-1.5 py-0.5 rounded cursor-help font-game"
-              style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
               title={
-                `滑动窗口: ${summary.window.left}/${summary.window.deck.length} 已消费` +
-                `\n手牌大小: ${summary.window.size}`
+                tpl(t.timeline.window_consumed, { left: summary.window.left, total: summary.window.deck.length }) +
+                `\n${tpl(t.timeline.window_size, { size: summary.window.size })}`
               }
             >
               🂠 {summary.window.left}/{summary.window.deck.length}
@@ -113,15 +115,15 @@ export function Timeline() {
         <div className="flex items-center gap-1">
           <button
             onClick={toggleScrollMode}
-            className="px-1.5 py-0.5 text-[10px] rounded text-gray-300"
-            style={{ background: scrollMode === 'pan' ? 'rgba(59,130,246,0.25)' : 'var(--bg-surface-alt)' }}
-            title={scrollMode === 'zoom' ? '滚轮：缩放（点击切换为平移）' : '滚轮：平移（点击切换为缩放）'}
+            className="ba-cut-btn px-1.5 py-0.5 text-[10px] text-gray-300"
+            style={{ background: scrollMode === 'pan' ? 'var(--accent-soft)' : 'var(--bg-surface-alt)' }}
+            title={scrollMode === 'zoom' ? t.timeline.scroll_zoom_hint : t.timeline.scroll_pan_hint}
           >
             {scrollMode === 'zoom' ? '🔍' : '✋'}
           </button>
           <button
             onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP))}
-            className="px-1.5 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
+            className="ba-cut-btn px-1.5 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300"
           >
             −
           </button>
@@ -130,7 +132,7 @@ export function Timeline() {
           </span>
           <button
             onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + ZOOM_STEP))}
-            className="px-1.5 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
+            className="ba-cut-btn px-1.5 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300"
           >
             +
           </button>

@@ -9,7 +9,7 @@
 
 import type { StudentLane } from '../types/timeline'
 import type { Student } from '../types/student'
-import type { Intent, BattleEnv, Formation } from '../engine/model/types'
+import type { Intent, BattleEnv, Formation, SkillRef } from '../engine/model/types'
 import { PRIORITY } from '../engine/model/fsm'
 import { SimulationEngine } from '../engine/core/simulationEngine'
 import { useSquadStore } from '../stores/useSquadStore'
@@ -18,7 +18,7 @@ import { useSquadStore } from '../stores/useSquadStore'
 // 1. Store → Engine Input
 // ═══════════════════════════════════════════════════
 
-/** 将 StudentLane[] → Intent[] (EX_CAST) */
+/** 将时间轴事实 → Engine Intent（EX/NS/SS 均可手动录入）。 */
 export function lanesToIntents(lanes: StudentLane[]): Intent[] {
   const intents: Intent[] = []
   let idCounter = 0
@@ -26,19 +26,27 @@ export function lanesToIntents(lanes: StudentLane[]): Intent[] {
   for (const lane of lanes) {
     if (!lane.student) continue
     for (const skill of lane.skills) {
-      if (skill.type !== 'ex') continue
+      const skillRef = skill.skillRef ?? inferSkillRef(skill.type, lane.student)
       intents.push({
-        id: `ex-${idCounter++}`,
+        id: `skill-${idCounter++}`,
         frame: skill.startFrame,
-        type: 'EX_CAST',
+        type: skillRef.kind === 'ex' || skillRef.kind === 'extra_ex' ? 'EX_CAST' : skillRef.kind === 'extra_passive' || skillRef.kind === 'passive' || skillRef.kind === 'weapon_passive' ? 'SS_TRIGGER' : 'NS_TRIGGER',
         issuerId: skill.studentId,
-        targetIds: [skill.targetId ?? skill.studentId],
-        priority: PRIORITY.EX_CAST,
+        targetIds: skill.targetIds ?? [skill.targetId ?? skill.studentId],
+        priority: skillRef.kind === 'ex' || skillRef.kind === 'extra_ex' ? PRIORITY.EX_CAST : skillRef.kind === 'public' || skillRef.kind === 'gear_public' ? PRIORITY.NS_TRIGGER : PRIORITY.SS_TRIGGER,
+        skillRef,
+        triggerSource: skill.triggerSource ?? 'manual',
       })
     }
   }
 
   return intents
+}
+
+function inferSkillRef(type: StudentLane['skills'][number]['type'], student: Student): SkillRef {
+  if (type === 'ex') return { kind: 'ex' }
+  if (type === 'ns') return student.HasGear && student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
+  return { kind: 'extra_passive' }
 }
 
 /** 构建 Formation 供 Engine 使用 */

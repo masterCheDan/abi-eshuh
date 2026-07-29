@@ -8,26 +8,14 @@ import { getNsSkill } from '../../utils/nsTrigger'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { SkillIcon } from './SkillIcon'
 import { useBossStore } from '../../stores/useBossStore'
+import { useI18n, tpl } from '../../i18n'
 
 interface StudentSkillCardProps {
     student: Student
 }
 
-const ROLE_LABELS: Record<string, string> = {
-    DamageDealer: '输出', Healer: '治疗', Supporter: '辅助', Tanker: '坦克', Vehicle: '载具',
-}
-
-const ARMOR_LABELS: Record<string, string> = {
-    LightArmor: '轻装甲', HeavyArmor: '重装甲',
-    CompositeArmor: '复合装甲', ElasticArmor: '弹力装甲', Unarmed: '特殊装甲',
-}
-
 const BULLET_COLORS: Record<string, string> = {
     Explosion: '#ef4444', Pierce: '#eab308', Mystic: '#4f90ff', Sonic: '#c97eff',
-}
-
-const BULLET_LABELS: Record<string, string> = {
-    Explosion: '爆发', Pierce: '贯穿', Mystic: '神秘', Sonic: '振动',
 }
 
 const ARMOR_COLORS: Record<string, string> = {
@@ -35,13 +23,10 @@ const ARMOR_COLORS: Record<string, string> = {
     CompositeArmor: '#22c55e', ElasticArmor: '#c97eff', Unarmed: '#4f90ff',
 }
 
-const TERRAINS: { key: string; label: string }[] = [
-    { key: 'Street', label: '街道' },
-    { key: 'Outdoor', label: '户外' },
-    { key: 'Indoor', label: '室内' },
-]
+const TERRAIN_KEYS = ['Street', 'Outdoor', 'Indoor'] as const
 
 export function StudentSkillCard({ student }: StudentSkillCardProps) {
+    const { t } = useI18n()
     const [collapsed, setCollapsed] = useState(false)
     const slots = useSquadStore((s) => s.config.slots)
     const slot = useMemo(() => slots.find((s) => s.student?.Id === student.Id), [slots, student.Id])
@@ -83,40 +68,42 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
                             src={`${import.meta.env.BASE_URL}ui/Role_${student.TacticRole}.png`}
                             alt=""
                             className="w-4 h-4 object-contain"
-                            title={ROLE_LABELS[student.TacticRole] || student.TacticRole}
+                            title={t.role[student.TacticRole] || student.TacticRole}
                             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${BULLET_COLORS[student.BulletType] || '#6b7280'}18`, color: BULLET_COLORS[student.BulletType] || '#6b7280' }}>
-                            {BULLET_LABELS[student.BulletType] || student.BulletType}
+                            {t.bullet[student.BulletType] || student.BulletType}
                         </span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${ARMOR_COLORS[student.ArmorType] || '#6b7280'}18`, color: ARMOR_COLORS[student.ArmorType] || '#6b7280' }}>
-                            {ARMOR_LABELS[student.ArmorType] || student.ArmorType}
+                            {t.armor[student.ArmorType] || student.ArmorType}
                         </span>
                     </div>
                     {/* 地形适性 */}
                     <div className="flex items-center gap-1.5 mt-1">
-                        {TERRAINS.map((tk) => {
-                            const adaptValue = student[tk.key as keyof Student] as number
-                            const isActive = tk.key === selectedBossTerrain
+                        {TERRAIN_KEYS.map((key) => {
+                            const adaptValue = student[key] as number
+                            const isActive = key === selectedBossTerrain
                             return (
                                 <div
-                                    key={tk.key}
+                                    key={key}
                                     className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg ${isActive ? 'border' : ''}`}
                                     style={{
-                                        background: isActive ? 'rgba(59,130,246,0.2)' : 'transparent',
-                                        borderColor: isActive ? 'rgba(59,130,246,0.5)' : 'transparent',
+                                        background: isActive ? 'var(--accent-soft)' : 'transparent',
+                                        borderColor: isActive ? 'var(--accent)' : 'transparent',
                                     }}
                                 >
                                     <img
-                                        src={`${import.meta.env.BASE_URL}ui/Terrain_${tk.key}.png`}
+                                        src={`${import.meta.env.BASE_URL}ui/Terrain_${key}.png`}
                                         alt=""
                                         className="w-3.5 h-3.5 object-contain"
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                                     />
                                     <img
                                         src={`${import.meta.env.BASE_URL}ui/Adaptresult${adaptValue}.png`}
                                         alt=""
                                         className="w-3 h-3 object-contain"
-                                        title={`${tk.label}适性`}
+                                        title={tpl(t.skill.terrain_adapt, { terrain: t.terrain[key] })}
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                                     />
                                 </div>
                             )
@@ -150,7 +137,7 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
                             <span className="text-[9px] font-medium" style={{ color: '#c084fc' }}>
-                                形态切换后技能
+                                {t.skill.extra_skills}
                             </span>
                         </div>
                         {student.Skills.E.ExtraSkills.map((es, i) => (
@@ -176,7 +163,11 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
 
 /** NS 子卡片组件 */
 function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: NonNullable<ReturnType<typeof getNsSkill>>; slotIndex: number; nsLevel: number }) {
+    const { t } = useI18n()
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
+    const squadStudents = useSquadStore((s) => s.config.slots.filter(slot => slot.student).map(slot => slot.student!))
+    const [targetId, setTargetId] = useState(student.Id)
+    const ref = student.HasGear && student.Skills.G ? { kind: 'gear_public' } as const : { kind: 'public' } as const
 
     const handleAddNs = () => {
         addSkillBlock(slotIndex, {
@@ -184,7 +175,10 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
             name: ns.Name,
             startFrame: 0,
             studentId: student.Id,
-            targetId: student.Id,
+            targetId,
+            targetIds: [targetId],
+            skillRef: ref,
+            triggerSource: 'manual',
         })
     }
 
@@ -209,10 +203,16 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
                     </div>
                     {ns.Duration && (
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {ns.Duration} 帧 · 自动触发
+                            {tpl(t.skill.ns_auto, { n: ns.Duration })}
                         </div>
                     )}
                 </div>
+            </div>
+            <div className="px-3 pb-1 flex items-center gap-1.5 text-[10px]">
+                <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
+                <select value={targetId} onChange={(e) => setTargetId(Number(e.target.value))} className="rounded px-1 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+                    {squadStudents.map(target => <option key={target.Id} value={target.Id}>{target.Name}</option>)}
+                </select>
             </div>
             <div className="flex items-center justify-end gap-1.5 px-3 pb-2.5 pt-1">
                 <button
@@ -220,20 +220,20 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
                     onDragStart={(e) => {
                         e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                             type: 'ns', name: ns.Name, startFrame: 0,
-                            studentId: student.Id, targetId: student.Id,
+                            studentId: student.Id, targetId, targetIds: [targetId], skillRef: ref, triggerSource: 'manual',
                         }))
                         e.dataTransfer.effectAllowed = 'copyMove'
                     }}
                     className="text-[11px] px-2 py-0.5 rounded border cursor-grab active:cursor-grabbing"
                     style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
                 >
-                    ⠿ 拖拽
+                    {t.skill.drag}
                 </button>
                 <button
                     onClick={handleAddNs}
                     className="text-[11px] px-2 py-0.5 rounded font-medium bg-emerald-600 hover:bg-emerald-500 text-white"
                 >
-                    + 添加
+                    {t.skill.add}
                 </button>
             </div>
         </div>
@@ -242,7 +242,10 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
 
 /** SS 子卡片组件（ExtraPassive） */
 function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: Student['Skills']['EP']; slotIndex: number; ssLevel: number }) {
+    const { t } = useI18n()
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
+    const squadStudents = useSquadStore((s) => s.config.slots.filter(slot => slot.student).map(slot => slot.student!))
+    const [targetId, setTargetId] = useState(student.Id)
 
     const handleAddSs = () => {
         addSkillBlock(slotIndex, {
@@ -250,7 +253,9 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
             name: ep.Name,
             startFrame: 0,
             studentId: student.Id,
-            targetId: student.Id,
+            targetId,
+            targetIds: [targetId],
+            skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
         })
     }
 
@@ -274,9 +279,15 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
                         {ep.Name}
                     </div>
                     <div className="text-[10px] mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-                        <span>副技能 · 常驻</span>
+                        <span>{t.skill.ss_passive}</span>
                     </div>
                 </div>
+            </div>
+            <div className="px-3 pb-1 flex items-center gap-1.5 text-[10px]">
+                <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
+                <select value={targetId} onChange={(e) => setTargetId(Number(e.target.value))} className="rounded px-1 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+                    {squadStudents.map(target => <option key={target.Id} value={target.Id}>{target.Name}</option>)}
+                </select>
             </div>
             <div className="flex items-center justify-end gap-1.5 px-3 pb-2.5 pt-1">
                 <button
@@ -284,20 +295,21 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
                     onDragStart={(e) => {
                         e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                             type: 'ss', name: ep.Name, startFrame: 0,
-                            studentId: student.Id, targetId: student.Id,
+                            studentId: student.Id, targetId, targetIds: [targetId],
+                            skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
                         }))
                         e.dataTransfer.effectAllowed = 'copyMove'
                     }}
                     className="text-[11px] px-2 py-0.5 rounded border cursor-grab active:cursor-grabbing"
                     style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
                 >
-                    ⠿ 拖拽
+                    {t.skill.drag}
                 </button>
                 <button
                     onClick={handleAddSs}
                     className="text-[11px] px-2 py-0.5 rounded font-medium bg-amber-600 hover:bg-amber-500 text-white"
                 >
-                    + 添加
+                    {t.skill.add}
                 </button>
             </div>
         </div>

@@ -8,6 +8,12 @@
 import { create } from 'zustand'
 import type { BossData, BossTerrain, BossArmorType } from '../types/boss'
 
+/** 按 Boss.Id 查找（不依赖 JSON key 与 Id 一致） */
+function getBossById(bosses: Record<string, BossData> | null, id: number): BossData | null {
+    if (!bosses) return null
+    return Object.values(bosses).find(b => b.Id === id) ?? null
+}
+
 interface BossState {
     /** 全部 Boss 数据（以 ID 为 key） */
     bosses: Record<string, BossData> | null
@@ -59,8 +65,7 @@ export const useBossStore = create<BossState>((set, get) => ({
 
     selectBoss: (id) => {
         // 切换 Boss 时自动更新地形和装甲为 Boss 的默认值
-        const { bosses } = get()
-        const boss = bosses?.[String(id)]
+        const boss = getBossById(get().bosses, id)
         set({
             selectedBossId: id,
             selectedTerrain: boss?.Terrain[0] ?? 'Street',
@@ -76,7 +81,7 @@ export const useBossStore = create<BossState>((set, get) => ({
 
     getSelectedBoss: () => {
         const { bosses, selectedBossId } = get()
-        if (!bosses || selectedBossId === 0) return null
-        return bosses[String(selectedBossId)] ?? null
+        if (selectedBossId === 0) return null
+        return getBossById(bosses, selectedBossId)
     },
 }))

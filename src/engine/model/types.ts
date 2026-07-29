@@ -9,6 +9,19 @@
 // 1. 意图 (Intent) — 唯一事实来源
 // ═══════════════════════════════════════════════════
 
+/** 学生技能的稳定引用；不依赖展示名称，支持变身后的 EX。 */
+export type SkillRef =
+  | { kind: 'ex' }
+  | { kind: 'public' }
+  | { kind: 'gear_public' }
+  | { kind: 'passive' }
+  | { kind: 'weapon_passive' }
+  | { kind: 'extra_passive' }
+  | { kind: 'extra_ex'; extraSkillId?: string; extraSkillIndex?: number }
+
+/** 不确定条件的结论必须由用户显式录入，保证推演可复现。 */
+export type TriggerSource = 'automatic' | 'manual'
+
 export interface Intent {
   /** 唯一标识，支持增删改查 */
   id: string
@@ -22,6 +35,10 @@ export interface Intent {
   targetIds: number[]
   /** 优先级 (CC > User_EX > System_NS) */
   priority: number
+  /** 具体技能；旧轴码省略时按 type 推导。 */
+  skillRef?: SkillRef
+  /** automatic 仅用于具有结构化 TriggerSpec 的确定性技能。 */
+  triggerSource?: TriggerSource
 }
 
 // ═══════════════════════════════════════════════════
@@ -83,7 +100,18 @@ export interface SimulationError {
   frame: number
   issuerId: number
   message: string
-  type: 'COST_EXCEEDED' | 'OUT_OF_WINDOW' | 'COOLDOWN' | 'INVALID_TARGET'
+  type: 'COST_EXCEEDED' | 'OUT_OF_WINDOW' | 'COOLDOWN' | 'INVALID_TARGET' | 'INVALID_CONDITION'
+}
+
+export interface EffectAuditRecord {
+  frame: number
+  issuerId: number
+  targetIds: number[]
+  skillRef: SkillRef
+  effectIndex: number
+  effectType: string
+  action: 'scheduled' | 'applied' | 'expired' | 'consumed' | 'rejected'
+  detail?: string
 }
 
 export interface SimulationResult {
@@ -95,6 +123,8 @@ export interface SimulationResult {
   actionLogs: ActionRecord[]
   /** 错误/警告列表 */
   errors: SimulationError[]
+  /** 学生技能效果的可审计执行记录。 */
+  effectAudit: EffectAuditRecord[]
   /** 滑动窗口信息 */
   window?: {
     /** 当前窗口左边界（已消费 card 数） */
@@ -138,6 +168,10 @@ export interface StudentRuntimeState {
   controlledUntil: number
   phaseTransitionUntil: number
   nsTriggered: boolean
+  /** Special / Accumulation 等状态标签 → 层数。 */
+  specialStacks: Record<string, number>
+  /** 当前护盾值（仅学生技能层面，不引入 Boss 数值）。 */
+  shield: number
 }
 
 // ═══════════════════════════════════════════════════
@@ -181,4 +215,22 @@ export interface ShareCodePayload {
   cfg?: {
     override: CalibrationEntry[]
   }
+}
+
+/** v2 轴码事件，所有字段均为用户录入的事实。 */
+export interface ShareCodeEventV2 {
+  frame: number
+  casterSlot: number
+  targetSlots: number[]
+  skillRef: SkillRef
+  triggerSource: TriggerSource
+}
+
+export interface ShareCodePayloadV2 {
+  ver: '2.0.0'
+  env: [number, number, number, number]
+  form: (number | null)[]
+  init?: number[]
+  events: ShareCodeEventV2[]
+  cfg?: { override: CalibrationEntry[] }
 }

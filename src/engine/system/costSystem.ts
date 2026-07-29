@@ -24,13 +24,14 @@ export interface CostFrame {
   cost: number
 }
 
-interface RegChange {
+export interface RegChange {
   frame: number
   regenDelta: number
   endFrame: number
 }
 
-function collectCostChanges(student: Student): RegChange[] {
+// 已知近似：Scale 取最后一档（最高技能等级），endFrame 固定 5400 忽略效果持续时间
+export function collectCostChanges(student: Student): RegChange[] {
   const changes: RegChange[] = []
 
   const scan = (

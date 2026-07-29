@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { StudentLane } from '../../types/timeline'
 import { simulateBattle } from '../../utils/battleSimulator'
 import { getStudentHue } from '../../utils/studentColors'
+import { useThemeStore } from '../../stores/useThemeStore'
 
 interface AttackTrackProps {
   lane: StudentLane
@@ -12,6 +13,7 @@ const TRACK_HEIGHT = 12
 
 export function AttackTrack({ lane, pxPerFrame }: AttackTrackProps) {
   const { student } = lane
+  const dark = useThemeStore((s) => s.resolved) === 'dark'
 
   const segments = useMemo(() => {
     if (!student || student.SquadType !== 'Main') return []
@@ -37,12 +39,13 @@ export function AttackTrack({ lane, pxPerFrame }: AttackTrackProps) {
           if (isSkill(type)) return null
           const w = (seg.endFrame - seg.startFrame) * pxPerFrame
           if (w < 0.5) return null
+          const dk = dark ? 0 : 12 // 亮色主题压暗亮度防洗白
           const colors: Record<string, { bg: string; border: string; cls?: string }> = {
-            prepare: { bg: `hsla(${hue}, 30%, 50%, 0.12)`, border: `hsla(${hue}, 30%, 50%, 0.2)` },
-            reload: { bg: `hsla(${hue}, 20%, 40%, 0.15)`, border: `hsla(${hue}, 20%, 40%, 0.25)` },
+            prepare: { bg: `hsla(${hue}, 30%, ${50 - dk}%, 0.12)`, border: `hsla(${hue}, 30%, ${50 - dk}%, 0.2)` },
+            reload: { bg: `hsla(${hue}, 20%, ${40 - dk}%, 0.15)`, border: `hsla(${hue}, 20%, ${40 - dk}%, 0.25)` },
             interrupted: { bg: 'hsla(0, 0%, 40%, 0.18)', border: 'hsla(0, 0%, 40%, 0.3)', cls: 'opacity-60' },
-            attack: { bg: `hsla(${hue}, 40%, 55%, 0.18)`, border: `hsla(${hue}, 40%, 55%, 0.3)` },
-            phase_transition: { bg: 'hsla(10, 70%, 45%, 0.2)', border: 'hsla(10, 70%, 45%, 0.35)' },
+            attack: { bg: `hsla(${hue}, 40%, ${55 - dk}%, 0.18)`, border: `hsla(${hue}, 40%, ${55 - dk}%, 0.3)` },
+            phase_transition: { bg: `hsla(10, 70%, ${45 - dk}%, 0.2)`, border: `hsla(10, 70%, ${45 - dk}%, 0.35)` },
           }
           const c = (colors as Record<string, { bg: string; border: string; cls?: string }>)[type] || colors.attack
           const titles: Record<string, string> = {

@@ -6,6 +6,29 @@ import { useI18n } from '../../i18n'
 import { decodeShareCode } from '../../utils/planExport'
 import type { ImportData } from '../../utils/planExport'
 import type { StudentLane } from '../../types/timeline'
+import type { SkillRef, TriggerSource } from '../../engine/model/types'
+
+type CompatibleImport = {
+  studentIds: number[]
+  skills: Array<{ frame: number; casterSlot: number; targetSlot?: number; targetSlots?: number[]; skillRef?: SkillRef; triggerSource?: TriggerSource }>
+}
+
+function blockType(ref: SkillRef): 'ex' | 'ns' | 'ss' {
+  return ref.kind === 'ex' || ref.kind === 'extra_ex' ? 'ex' : ref.kind === 'public' || ref.kind === 'gear_public' ? 'ns' : 'ss'
+}
+
+function skillName(student: NonNullable<StudentLane['student']>, ref: SkillRef): string {
+  if (ref.kind === 'public') return student.Skills.P?.Name ?? student.Skills.E.Name
+  if (ref.kind === 'gear_public') return student.Skills.G?.Name ?? student.Skills.P?.Name ?? student.Skills.E.Name
+  if (ref.kind === 'extra_passive') return student.Skills.EP.Name
+  if (ref.kind === 'passive') return student.Skills.PS.Name
+  if (ref.kind === 'weapon_passive') return student.Skills.WP.Name
+  if (ref.kind === 'extra_ex') {
+    const extras = student.Skills.E.ExtraSkills ?? []
+    return (ref.extraSkillId ? extras.find(s => s.Id === ref.extraSkillId) : extras[ref.extraSkillIndex ?? 0])?.Name ?? student.Skills.E.Name
+  }
+  return student.Skills.E.Name
+}
 
 interface ImportDialogProps { onClose: () => void }
 
@@ -43,7 +66,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
       return
     }
 
-    const data = result.data as ImportData
+    const data = result.data as ImportData & CompatibleImport
     const { studentIds, skills } = data
 
     // ── 1. 建立新的 SquadSlot 数组 + TimeLane 数组 ──
@@ -80,18 +103,22 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
       const lane = newLanes[ev.casterSlot]
       if (!lane || !lane.student) continue
 
-      let targetId = -1
-      if (ev.targetSlot >= 0 && ev.targetSlot < newLanes.length) {
-        const targetLane = newLanes[ev.targetSlot]
-        if (targetLane?.student) targetId = targetLane.student.Id
-      }
+      const targetSlots = ev.targetSlots ?? (ev.targetSlot == null ? [] : [ev.targetSlot])
+      const targetIds = targetSlots.map(targetSlot => {
+        if (targetSlot === -1) return -1
+        return newLanes[targetSlot]?.student?.Id ?? -1
+      })
+      const ref = ev.skillRef ?? { kind: 'ex' } as SkillRef
 
       lane.skills.push({
-        type: 'ex',
-        name: lane.student.Skills.E.Name,
+        type: blockType(ref),
+        name: skillName(lane.student, ref),
         startFrame: ev.frame,
         studentId: lane.student.Id,
-        targetId: ev.targetSlot >= 0 ? targetId : -1,
+        targetId: targetIds[0] ?? lane.student.Id,
+        targetIds,
+        skillRef: ref,
+        triggerSource: ev.triggerSource ?? 'manual',
       })
     }
 
@@ -134,9 +161,9 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
           <button
             onClick={handleImport}
             disabled={!codeText.trim()}
-            className="mt-3 px-4 py-1.5 rounded text-xs font-medium"
+            className="ba-cut-btn mt-3 px-4 py-1.5 text-xs font-medium"
             style={{
-              background: codeText.trim() ? '#2563eb' : 'var(--bg-surface-alt)',
+              background: codeText.trim() ? 'var(--accent)' : 'var(--bg-surface-alt)',
               color: codeText.trim() ? '#fff' : 'var(--text-muted)',
             }}
           >

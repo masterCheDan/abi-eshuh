@@ -1,4 +1,5 @@
 import type { Student } from './student'
+import type { SkillRef, TriggerSource } from '../engine/model/types'
 
 /** 时间轴上的一个技能块（仅记录事实，不包含推导数据） */
 export interface SkillBlock {
@@ -12,6 +13,12 @@ export interface SkillBlock {
   studentId: number
   /** 目标学生 ID（默认等于 studentId，表示自身） */
   targetId?: number
+  /** 多目标事实来源。targetId 保留用于旧存档兼容。 */
+  targetIds?: number[]
+  /** 稳定技能引用；缺失时由 type 按旧行为推导。 */
+  skillRef?: SkillRef
+  /** 手动触发代表用户已确认概率/阈值等外部条件成立。 */
+  triggerSource?: TriggerSource
   /**
    * 实际 COST 消耗（可选）。
    * ExtraSkills（形态切换后的后续技能）Cost 为 0。

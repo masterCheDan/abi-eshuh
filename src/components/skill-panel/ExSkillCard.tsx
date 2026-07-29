@@ -18,10 +18,8 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const slots = useSquadStore((s) => s.config.slots)
 
-  const slotIndex = useMemo(() => {
-    const slot = slots.find((s) => s.student?.Id === student.Id)
-    return slot?.index ?? -1
-  }, [slots, student.Id])
+  const slot = useMemo(() => slots.find((s) => s.student?.Id === student.Id), [slots, student.Id])
+  const slotIndex = slot?.index ?? -1
 
   const squadStudents = useMemo(() => slots.filter((s) => s.student).map((s) => s.student!), [slots])
   const strikers = useMemo(() => squadStudents.filter((s) => s.SquadType === 'Main'), [squadStudents])
@@ -30,7 +28,6 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const ex = student.Skills.E
 
   // ── EX 等级 ──
-  const slot = slots.find((s) => s.student?.Id === student.Id)
   const exLevel = slot?.exLevel ?? 5
 
   /** Cost 时间线（用于查询任意时点的 Cost） */
@@ -194,7 +191,8 @@ function toArray(v: string | string[] | undefined): string[] {
     if (!canAct) return
     addSkillBlock(slotIndex, {
       type: 'ex', name: ex.Name, startFrame: totalFrames,
-      studentId: student.Id, targetId: effectiveTargetId(),
+      studentId: student.Id, targetId: effectiveTargetId(), targetIds: [effectiveTargetId()],
+      skillRef: { kind: 'ex' }, triggerSource: 'manual',
       skillCost: ex.Cost[exLevel - 1], skillDuration: ex.Duration,
     })
   }
@@ -259,7 +257,7 @@ function toArray(v: string | string[] | undefined): string[] {
           {min}:{String(sec).padStart(2, '0')}.{String(msVal).padStart(3, '0')}
         </span>
         <span className="text-gray-500">=</span>
-        <span style={{ color: 'var(--text-secondary)' }}>{totalFrames} 帧</span>
+        <span style={{ color: 'var(--text-secondary)' }}>{totalFrames} {t.skill.frame}</span>
       </div>
 
       {/* 目标选择器 */}
@@ -293,7 +291,7 @@ function toArray(v: string | string[] | undefined): string[] {
       ) : targetMode === 'self' ? (
         <div className="flex items-center gap-2 text-xs">
           <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
-          <span className="font-game text-[11px] px-1.5 py-0.5 rounded" style={{ color: '#10b981', background: 'rgba(16,185,129,0.10)' }}>
+          <span className="font-game text-[11px] px-1.5 py-0.5 rounded" style={{ color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 10%, transparent)' }}>
             {t.skill.target_self}
           </span>
         </div>
@@ -301,13 +299,13 @@ function toArray(v: string | string[] | undefined): string[] {
 
       {/* 底部操作栏 */}
       <div className="flex items-center gap-2 mt-3 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{ex.Duration}帧</span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{ex.Duration} {t.skill.frame}</span>
         {!isTimeValid && !isNaN(totalFrames) && (
-          <span className="text-[11px] text-red-400">时间冲突</span>
+          <span className="text-[11px] text-red-400">{t.skill.time_conflict}</span>
         )}
         {isTimeValid && !hasEnoughCost && !isNaN(totalFrames) && (
           <span className="text-[11px] text-red-400">
-            <span className="font-game">COST</span>不足 ({skillCost}/{availableCost.toFixed(1)})
+            {t.skill.cost_insufficient} ({skillCost}/{availableCost.toFixed(1)})
           </span>
         )}
         <div className="flex-1" />
@@ -316,21 +314,22 @@ function toArray(v: string | string[] | undefined): string[] {
           onDragStart={selected ? (e) => {
             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
               type: 'ex', name: ex.Name, startFrame: 0,
-              studentId: student.Id, targetId: effectiveTargetId(),
+              studentId: student.Id, targetId: effectiveTargetId(), targetIds: [effectiveTargetId()],
+              skillRef: { kind: 'ex' }, triggerSource: 'manual',
             }))
             e.dataTransfer.effectAllowed = 'copyMove'
           } : undefined}
           className={`text-xs px-2 py-0.5 rounded border ${selected ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-40'}`}
           style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
         >
-          ⠿ 拖拽
+          {t.skill.drag}
         </button>
         <button
           onClick={handleAdd}
           disabled={!canAct}
           className={`text-xs rounded px-3 py-1 font-medium ${canAct ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
         >
-          + 添加
+          {t.skill.add}
         </button>
       </div>
     </div>

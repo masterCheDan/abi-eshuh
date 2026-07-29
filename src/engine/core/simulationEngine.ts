@@ -29,11 +29,14 @@ import type {
   SimulationResult,
   SimulationError,
   StudentRuntimeState,
+  SkillRef,
 } from '../model/types'
 import { StudentState } from '../model/types'
 import { isInterruptible } from '../model/fsm'
 import { TriggerScheduler, getNsSkill, getNsDuration } from '../system/triggerScheduler'
-import { computeCostTimeline, costAtFrame, COST_SCALE } from '../system/costSystem'
+import { computeCostTimeline, costAtFrame, collectCostChanges, COST_SCALE } from '../system/costSystem'
+import { StudentEffectSystem, resolveSkill, type ResolvedSkill } from '../system/studentEffectSystem'
+import { automaticTriggerSpecs } from '../system/triggerSpecs'
 
 // ═══════════════════════════════════════════════════
 // Engine 门面
@@ -77,7 +80,120 @@ export class SimulationEngine {
    *
    * @param intents 用户指令列表 (EX_CAST)
    */
+  /**
+   * 确定性学生技能推演。所有失败的 intent 在改变 Cost、牌序或状态前被拒绝。
+   */
   simulate(intents: Intent[]): SimulationResult {
+    this.scheduler.reset()
+    this.logIdCounter = 0
+    this.windowLeft = 0
+
+    const maxFrame = this.env.maxFrame
+    const actionLogs: ActionRecord[] = []
+    const errors: SimulationError[] = []
+    const runtimes = new Map<number, StudentRuntimeState>()
+    for (let slot = 0; slot < this.formation.slots.length; slot++) {
+      const studentId = this.formation.slots[slot]
+      if (studentId != null) runtimes.set(slot, this.initRuntime(slot, studentId))
+    }
+
+    const effects = new StudentEffectSystem(this.students, this.formation)
+    // 入场常驻技能是唯一无需用户事件的学生技能。带条件的 EP 仍须用户手动确认。
+    for (const runtime of runtimes.values()) {
+      const student = this.students.get(runtime.studentId)
+      if (!student) continue
+      for (const spec of automaticTriggerSpecs(student)) {
+        const ref = spec.skillRef
+        const skill = resolveSkill(student, ref, this.getExLevel(runtime.slotIndex))
+        if (!skill) continue
+        const entryTargets = this.formation.slots.filter((id): id is number => id != null && id !== student.Id)
+        effects.schedule({ id: `entry-${runtime.slotIndex}-${ref.kind}`, frame: 0, type: 'SS_TRIGGER', issuerId: student.Id, targetIds: entryTargets, priority: 1, skillRef: ref, triggerSource: 'automatic' }, skill, 0)
+      }
+    }
+
+    const byFrame = new Map<number, Intent[]>()
+    for (const intent of intents) {
+      if (intent.frame < 0 || intent.frame > maxFrame) continue
+      const list = byFrame.get(intent.frame) ?? []
+      list.push(intent)
+      byFrame.set(intent.frame, list)
+    }
+
+    const activeLanes = this.formation.slots.filter((id): id is number => id != null)
+    const baseRegen = activeLanes.reduce((sum, id) => sum + (this.students.get(id)?.Regen || 700), 0)
+    const maxCost = (this.formation.mode === 'normal' ? 10 : 20) * COST_SCALE
+    let availableCost = 0
+    const costHistory: number[] = []
+
+    for (let frame = 0; frame <= maxFrame; frame++) {
+      effects.advance(frame, runtimes)
+      this.updateCC(runtimes, frame)
+      this.tickAllFSM(runtimes, frame)
+      availableCost = Math.min(maxCost, Math.max(0, availableCost + baseRegen + effects.getRegenDelta()))
+
+      const frameIntents = [...(byFrame.get(frame) ?? [])].sort((a, b) => a.priority - b.priority)
+      for (const intent of frameIntents) {
+        const slot = this.resolveSlot(intent.issuerId)
+        const runtime = runtimes.get(slot)
+        const student = this.students.get(intent.issuerId)
+        if (slot < 0 || !runtime || !student) {
+          errors.push({ frame, issuerId: intent.issuerId, message: 'caster is not in formation', type: 'INVALID_TARGET' })
+          continue
+        }
+        const ref = this.intentSkillRef(intent, student)
+        const skill = resolveSkill(student, ref, this.getExLevel(slot))
+        if (!skill) {
+          errors.push({ frame, issuerId: intent.issuerId, message: 'skill reference is not available', type: 'INVALID_CONDITION' })
+          continue
+        }
+        const effectError = effects.validate(intent, skill, runtimes)
+        if (effectError) {
+          errors.push({ frame, issuerId: intent.issuerId, message: effectError, type: effectError.includes('target') ? 'INVALID_TARGET' : 'INVALID_CONDITION' })
+          continue
+        }
+        if (!isInterruptible(runtime.currentState)) {
+          errors.push({ frame, issuerId: intent.issuerId, message: 'caster is executing a non-interruptible action', type: 'COOLDOWN' })
+          continue
+        }
+
+        const isEx = skill.action === 'EX'
+        if (isEx && !this.isInWindow(slot)) {
+          errors.push({ frame, issuerId: intent.issuerId, message: 'card_order_violation', type: 'OUT_OF_WINDOW' })
+          continue
+        }
+        const cost = Math.max(0, skill.cost + effects.getCostAdjustment(student.Id)) * COST_SCALE
+        if (isEx && availableCost < cost) {
+          errors.push({ frame, issuerId: intent.issuerId, message: `Cost exceeded at frame ${frame}`, type: 'COST_EXCEEDED' })
+          continue
+        }
+        if (!this.applyResolvedIntent(intent, runtime, student, skill, frame, actionLogs)) {
+          errors.push({ frame, issuerId: intent.issuerId, message: 'state transition rejected', type: 'COOLDOWN' })
+          continue
+        }
+        if (isEx) {
+          availableCost -= cost
+          effects.consumeCostModifiers(student.Id, frame)
+          this.advanceWindow(slot)
+        }
+        effects.schedule(intent, skill, frame)
+      }
+      costHistory.push(availableCost)
+    }
+
+    return {
+      maxFrame,
+      costHistory,
+      actionLogs,
+      errors,
+      effectAudit: effects.audit,
+      window: this.formation.deckOrder ? { left: this.windowLeft, size: this.formation.mode === 'normal' ? 3 : 5, deck: this.formation.deckOrder } : undefined,
+      finalRuntimes: runtimes,
+    }
+  }
+
+  /** 保留旧实现供历史比对，新的入口仅使用上方确定性流程。 */
+  /** @deprecated 仅用于对比旧结果；新调用方应使用 simulate。 */
+  simulateLegacy(intents: Intent[]): SimulationResult {
     this.scheduler.reset()
     this.logIdCounter = 0
     this.windowLeft = 0
@@ -105,23 +221,9 @@ export class SimulationEngine {
     const activeLanes = this.lanes.filter(l => l.student)
     const baseRegen = activeLanes.reduce((sum, l) => sum + (l.student!.Regen || 700), 0)
 
-    const regChanges: { frame: number; delta: number; endFrame: number }[] = []
-    for (const lane of activeLanes) {
-      const s = lane.student!
-      const scan = (effects: typeof s.Skills.E.Effects, applyFrame: number, start: number) => {
-        for (const ef of effects) {
-          if (ef.Type !== 'CostChange' || ef.ValueType !== 'BaseAmount') continue
-          const af = ef.ApplyFrame ?? applyFrame
-          const amount = ef.Scale ? ef.Scale[ef.Scale.length - 1] : 0
-          regChanges.push({ frame: start + af, delta: amount, endFrame: 5400 })
-        }
-      }
-      scan(s.Skills.PS.Effects, 0, 0)
-      scan(s.Skills.WP.Effects, 0, 0)
-      scan(s.Skills.EP.Effects, 0, 0)
-    }
+    const regChanges = activeLanes.flatMap(l => collectCostChanges(l.student!))
     let availableCost = 0
-    let currentRegen = baseRegen + regChanges.filter(r => r.frame === 0).reduce((s, r) => s + r.delta, 0)
+    let currentRegen = baseRegen + regChanges.filter(r => r.frame === 0).reduce((s, r) => s + r.regenDelta, 0)
     const regStartEvents = regChanges.filter(r => r.frame > 0).sort((a, b) => a.frame - b.frame)
     const regEndEvents = regChanges.filter(r => r.endFrame < maxFrame).sort((a, b) => a.endFrame - b.endFrame)
     let regStartIdx = 0
@@ -131,11 +233,11 @@ export class SimulationEngine {
     for (let frame = 0; frame <= maxFrame; frame++) {
       // Step 1: Clock Update (already done by loop)
       while (regStartIdx < regStartEvents.length && regStartEvents[regStartIdx].frame === frame) {
-        currentRegen += regStartEvents[regStartIdx].delta
+        currentRegen += regStartEvents[regStartIdx].regenDelta
         regStartIdx++
       }
       while (regEndIdx < regEndEvents.length && regEndEvents[regEndIdx].endFrame === frame) {
-        currentRegen -= regEndEvents[regEndIdx].delta
+        currentRegen -= regEndEvents[regEndIdx].regenDelta
         regEndIdx++
       }
       availableCost = Math.min(maxCost, Math.max(0, availableCost + currentRegen))
@@ -224,6 +326,7 @@ export class SimulationEngine {
       costHistory,
       actionLogs,
       errors,
+      effectAudit: [],
       window: windowInfo,
       finalRuntimes: runtimes,
     }
@@ -375,7 +478,49 @@ export class SimulationEngine {
       controlledUntil: 0,
       phaseTransitionUntil: 0,
       nsTriggered: false,
+      specialStacks: {},
+      shield: 0,
     }
+  }
+
+  private getExLevel(slot: number): number {
+    return this.formation.skillLevels?.[slot] ?? 5
+  }
+
+  private intentSkillRef(intent: Intent, student: Student): SkillRef {
+    if (intent.skillRef) return intent.skillRef
+    if (intent.type === 'EX_CAST') return { kind: 'ex' }
+    if (intent.type === 'NS_TRIGGER') return student.HasGear && student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
+    return { kind: 'extra_passive' }
+  }
+
+  private applyResolvedIntent(
+    intent: Intent,
+    runtime: StudentRuntimeState,
+    student: Student,
+    skill: ResolvedSkill,
+    frame: number,
+    logs: ActionRecord[],
+  ): boolean {
+    if (!isInterruptible(runtime.currentState)) return false
+    const state = skill.action === 'EX' ? StudentState.EX : skill.action === 'NS' ? StudentState.NS : StudentState.SS_CAST
+    runtime.previousState = runtime.currentState
+    runtime.currentState = state
+    runtime.currentActionStartFrame = frame
+    runtime.currentActionEndFrame = frame + skill.duration
+    const effectFrame = skill.effects.find(effect => effect.ApplyFrame != null)?.ApplyFrame ?? 0
+    logs.push({
+      recordId: `${this.logIdCounter++}`,
+      studentId: student.Id,
+      slotIndex: runtime.slotIndex,
+      actionType: skill.action,
+      startFrame: frame,
+      effectFrame: frame + effectFrame,
+      endFrame: frame + skill.duration,
+      wasInterrupted: false,
+      isManualOverride: intent.triggerSource === 'manual',
+    })
+    return true
   }
 
   /** 通过 studentId 反查 slotIndex */

@@ -4,7 +4,7 @@
 
 import type { SkillBlock, StudentLane } from '../types/timeline'
 import type { Student } from '../types/student'
-import { computeCostTimeline, COST_SCALE } from './costCalc'
+import { runSimulation, COST_SCALE } from '../engine'
 
 /* ── 帧 → m:ss.ms ── */
 function formatTime(totalFrames: number): string {
@@ -19,7 +19,7 @@ function formatTime(totalFrames: number): string {
    自然语言导出
    ══════════════════════════════════════════════════════ */
 
-function collectExEvents(lanes: StudentLane[]) {
+function collectSkillEvents(lanes: StudentLane[]) {
     const events: { frame: number; skill: SkillBlock; caster: Student }[] = []
     // ID→名称 映射
     const names = new Map<number, string>()
@@ -29,9 +29,7 @@ function collectExEvents(lanes: StudentLane[]) {
 
     for (const l of lanes) {
         if (!l.student) continue
-        for (const s of l.skills) {
-            if (s.type === 'ex') events.push({ frame: s.startFrame, skill: s, caster: l.student })
-        }
+        for (const s of l.skills) events.push({ frame: s.startFrame, skill: s, caster: l.student })
     }
     events.sort((a, b) => a.frame - b.frame)
     return { events, names }
@@ -55,14 +53,12 @@ export function exportNaturalLanguage(lanes: StudentLane[]): string {
     // 轴
     lines.push('')
     lines.push('[轴]')
-    const { events, names } = collectExEvents(lanes)
+    const { events, names } = collectSkillEvents(lanes)
     for (const ev of events) {
         const time = formatTime(ev.frame)
-        const targetId = ev.skill.targetId ?? ev.skill.studentId
-        const isSelf = targetId === ev.skill.studentId
-        const isBoss = targetId === -1
-        const targetName = isBoss ? 'Boss' : isSelf ? '自身' : (names.get(targetId) ?? `ID:${targetId}`)
-        lines.push(`${time} ${ev.caster.Name} -> ${targetName}`)
+        const targetIds = ev.skill.targetIds ?? [ev.skill.targetId ?? ev.skill.studentId]
+        const targetName = targetIds.map(targetId => targetId === -1 ? 'Boss' : targetId === ev.skill.studentId ? '自身' : (names.get(targetId) ?? `ID:${targetId}`)).join(', ')
+        lines.push(`${time} ${ev.caster.Name} ${ev.skill.name} -> ${targetName}`)
     }
 
     return lines.join('\n')
@@ -73,8 +69,11 @@ export function exportNaturalLanguage(lanes: StudentLane[]): string {
    ══════════════════════════════════════════════════════ */
 
 /** 计算 Cost 时间线并导出基于费用的文本 */
-export function exportCostBased(lanes: StudentLane[], mode: 'normal' | 'total_assault' = 'normal'): string {
-    const timeline = computeCostTimeline(lanes, mode)
+export function exportCostBased(lanes: StudentLane[], _mode: 'normal' | 'total_assault' = 'normal'): string {
+    // 队伍模式由 Engine 从 formation 推导；保留参数以兼容既有调用。
+    void _mode
+    const students = new Map(lanes.flatMap(lane => lane.student ? [[lane.student.Id, lane.student] as const] : []))
+    const timeline = runSimulation(lanes, students).costHistory
 
     const lines: string[] = []
 
@@ -93,22 +92,18 @@ export function exportCostBased(lanes: StudentLane[], mode: 'normal' | 'total_as
     // 轴
     lines.push('')
     lines.push('[轴]')
-    const { events, names } = collectExEvents(lanes)
+    const { events, names } = collectSkillEvents(lanes)
 
     // 查 Cost 工具
     const costAt = (frame: number): number => {
-        let lo = 0, hi = timeline.length - 1
-        while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (timeline[mid].frame <= frame) lo = mid; else hi = mid - 1 }
-        return timeline[lo]?.cost ?? 0
+        return timeline[Math.max(0, Math.min(frame, timeline.length - 1))] ?? 0
     }
 
     for (const ev of events) {
         const cost = costAt(ev.frame)
-        const targetId = ev.skill.targetId ?? ev.skill.studentId
-        const isSelf = targetId === ev.skill.studentId
-        const isBoss = targetId === -1
-        const targetName = isBoss ? 'Boss' : isSelf ? '自身' : (names.get(targetId) ?? `ID:${targetId}`)
-        lines.push(`[${(cost / COST_SCALE).toFixed(2)} Cost] ${ev.caster.Name} -> ${targetName}`)
+        const targetIds = ev.skill.targetIds ?? [ev.skill.targetId ?? ev.skill.studentId]
+        const targetName = targetIds.map(targetId => targetId === -1 ? 'Boss' : targetId === ev.skill.studentId ? '自身' : (names.get(targetId) ?? `ID:${targetId}`)).join(', ')
+        lines.push(`[${(cost / COST_SCALE).toFixed(2)} Cost] ${ev.caster.Name} ${ev.skill.name} -> ${targetName}`)
     }
 
     return lines.join('\n')

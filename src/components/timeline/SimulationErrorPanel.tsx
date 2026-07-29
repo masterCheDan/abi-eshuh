@@ -19,9 +19,9 @@ interface SimulationErrorPanelProps {
 }
 
 const ERROR_TYPE_COLORS: Record<string, string> = {
-    COST_EXCEEDED: '#f87171',
-    OUT_OF_WINDOW: '#fbbf24',
-    COOLDOWN: '#f97316',
+    COST_EXCEEDED: 'var(--danger)',
+    OUT_OF_WINDOW: 'var(--warn)',
+    COOLDOWN: 'var(--accent-2)',
     INVALID_TARGET: '#a78bfa',
 }
 
@@ -63,7 +63,7 @@ export function SimulationErrorPanel({
 
     return (
         <div
-            className="shrink-0 border-t"
+            className="ba-cut-panel shrink-0 border-t"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
         >
             {/* 折叠标题栏 */}
@@ -81,16 +81,16 @@ export function SimulationErrorPanel({
                 <span className="text-[11px] font-medium" style={{ color: 'var(--text-primary)' }}>
                     {t.sim_error.panel_title}
                 </span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded font-medium" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>
+                <span className="text-[11px] px-1.5 py-0.5 rounded font-medium" style={{ background: 'color-mix(in srgb, var(--danger) 12%, transparent)', color: 'var(--danger)' }}>
                     {errors.length} {errors.length === 1 ? 'error' : 'errors'}
                 </span>
                 {grouped.cost.length > 0 && (
-                    <span className="text-[10px]" style={{ color: '#f87171' }}>
+                    <span className="text-[10px]" style={{ color: 'var(--danger)' }}>
                         {grouped.cost.length} COST
                     </span>
                 )}
                 {grouped.window.length > 0 && (
-                    <span className="text-[10px]" style={{ color: '#fbbf24' }}>
+                    <span className="text-[10px]" style={{ color: 'var(--warn)' }}>
                         {grouped.window.length} {t.sim_error.out_of_window}
                     </span>
                 )}
@@ -133,7 +133,7 @@ export function SimulationErrorPanel({
                                 </span>
                                 <span
                                     className="text-[9px] px-1 py-px rounded shrink-0 font-medium"
-                                    style={{ background: color + '18', color }}
+                                    style={{ background: `color-mix(in srgb, ${color} 10%, transparent)`, color }}
                                 >
                                     {label}
                                 </span>

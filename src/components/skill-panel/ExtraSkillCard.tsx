@@ -168,6 +168,9 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
             type: 'ex', name: extraSkill.Name, startFrame: totalFrames,
             studentId: student.Id,
             targetId: targetIds[0] ?? student.Id,
+            targetIds,
+            skillRef: { kind: 'extra_ex', extraSkillId: extraSkill.Id },
+            triggerSource: 'manual',
             skillCost: extraSkill.Cost?.[0] ?? 0,
             skillDuration: extraSkill.Duration || 0,
         })
@@ -220,7 +223,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                         </div>
                         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                             <span className="text-[8px] px-1 py-[1px] rounded font-medium" style={{ background: 'rgba(168,85,247,0.08)', color: '#c084fc' }}>
-                                形态切换
+                                {t.skill.form_change}
                             </span>
                             <span className="text-[8px] px-1 py-[1px] rounded" style={{ background: 'rgba(107,114,128,0.12)', color: 'var(--text-muted)' }}>
                                 ← {student.Skills.E.Name}
@@ -272,9 +275,9 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                         {min}:{String(sec).padStart(2, '0')}.{String(msVal).padStart(3, '0')}
                     </span>
                     <span className="text-gray-500">=</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{totalFrames} 帧</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{totalFrames} {t.skill.frame}</span>
                     <span className="text-gray-500">·</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{extraSkill.Duration}帧</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{extraSkill.Duration} {t.skill.frame}</span>
                 </div>
 
                 {/* ── 目标选择 - AoE ── */}
@@ -338,11 +341,11 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                 {/* ── 底部操作栏（精简） ── */}
                 <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
                     {!isTimeValid && !isNaN(totalFrames) && (
-                        <span className="text-[9px] text-red-400">时间冲突</span>
+                        <span className="text-[9px] text-red-400">{t.skill.time_conflict}</span>
                     )}
                     {isTimeValid && !hasEnoughCost && !isNaN(totalFrames) && (
                         <span className="text-[9px] text-red-400">
-                            COST不足 ({skillCost}/{availableCost.toFixed(1)})
+                            {t.skill.cost_insufficient} ({skillCost}/{availableCost.toFixed(1)})
                         </span>
                     )}
                     <div className="flex-1" />
@@ -351,7 +354,8 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                         onDragStart={(e) => {
                             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                                 type: 'ex', name: extraSkill.Name, startFrame: 0,
-                                studentId: student.Id, targets: effectiveTargets(),
+                                studentId: student.Id, targetId: effectiveTargets()[0] ?? student.Id, targetIds: effectiveTargets(),
+                                skillRef: { kind: 'extra_ex', extraSkillId: extraSkill.Id }, triggerSource: 'manual',
                                 skillCost: extraSkill.Cost?.[0] ?? 0,
                                 skillDuration: extraSkill.Duration || 0,
                             }))
@@ -367,13 +371,13 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                         disabled={!canAct}
                         className={`text-[10px] rounded px-2 py-0.5 font-medium ${canAct ? 'bg-purple-600/80 hover:bg-purple-500 text-white' : 'bg-gray-600/60 text-gray-400 cursor-not-allowed'}`}
                     >
-                        + 添加
+                        {t.skill.add}
                     </button>
                 </div>
                     </>
                 ) : (
                     <div className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
-                        ⚡ 由父技能触发，无需手动释放
+                        {t.skill.parent_triggered}
                     </div>
                 )}
             </div>

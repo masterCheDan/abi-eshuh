@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import type { Student } from '../../types/student'
+import { useI18n, tpl } from '../../i18n'
 
 export function CardOrderEditor() {
+    const { t } = useI18n()
     const [collapsed, setCollapsed] = useState(false)
     const [selected, setSelected] = useState<number | null>(null)
     const slots = useSquadStore((s) => s.config.slots)
@@ -101,7 +103,7 @@ export function CardOrderEditor() {
             >
                 <StudentAvatar student={slot.student} size={36} />
                 <span className="text-[7px] font-game px-1 py-px rounded" style={{ background: 'rgba(107,114,128,0.2)', color: 'var(--text-muted)' }}>
-                    FREE
+                    {t.card_order.free}
                 </span>
             </button>
         )
@@ -135,7 +137,7 @@ export function CardOrderEditor() {
     }
 
     return (
-        <div className="rounded-lg p-3 border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+        <div className="ba-panel ba-cut-panel p-3">
             {/* 标题栏 */}
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -146,10 +148,10 @@ export function CardOrderEditor() {
                     >
                         {collapsed ? '▶' : '▼'}
                     </button>
-                    <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>牌序</span>
+                    <span className="ba-eyebrow">{t.card_order.title}</span>
                     {enabled && (
                         <span className="text-[10px] font-game px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
-                            窗口 {windowSize}
+                            {tpl(t.card_order.window, { n: windowSize })}
                         </span>
                     )}
                 </div>
@@ -163,7 +165,7 @@ export function CardOrderEditor() {
                         borderColor: enabled ? 'rgba(59,130,246,0.3)' : 'var(--border)',
                     }}
                 >
-                    {enabled ? '已启用' : '未启用'}
+                    {enabled ? t.card_order.enabled : t.card_order.disabled}
                 </button>
             </div>
 
@@ -171,7 +173,7 @@ export function CardOrderEditor() {
                 <>
                     {!enabled && (
                         <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                            点击"已启用"按钮后自动按编队顺序生成初始牌序，并可调整顺序。
+                            {t.card_order.disabled_hint}
                         </p>
                     )}
 
@@ -181,7 +183,7 @@ export function CardOrderEditor() {
 
                             {!isOrdered && (
                                 <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                                    牌序为空，点击下方自由学生添加到牌序中。
+                                    {t.card_order.empty_hint}
                                 </p>
                             )}
 
@@ -195,7 +197,7 @@ export function CardOrderEditor() {
 
                             {isOrdered && (
                                 <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
-                                    点击两张卡交换位置 · 悬停卡可 × 移除 · 点击 FREE 学生添加
+                                    {t.card_order.help}
                                 </p>
                             )}
                         </div>

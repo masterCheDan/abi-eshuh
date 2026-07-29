@@ -10,43 +10,29 @@ export interface StudentSearchProps {
   onSelect: (student: Student) => void
 }
 
-// ═══ 学校配置（含主题色） ═══
-const SCHOOLS: { key: School | ''; label: string; color: string }[] = [
-  { key: 'Abydos', label: '阿比多斯', color: '#eab308' },
-  { key: 'Gehenna', label: '格黑娜', color: '#ef4444' },
-  { key: 'Millennium', label: '千禧年', color: '#3b82f6' },
-  { key: 'Trinity', label: '三一', color: '#a855f7' },
-  { key: 'Hyakkiyako', label: '百鬼夜行', color: '#06b6d4' },
-  { key: 'Shanhaijing', label: '山海经', color: '#f97316' },
-  { key: 'RedWinter', label: '红冬', color: '#ec4899' },
-  { key: 'SRT', label: 'SRT', color: '#22c55e' },
-  { key: 'Valkyrie', label: '瓦尔基里', color: '#6366f1' },
-  { key: 'Arius', label: '阿里乌斯', color: '#78716c' },
-  { key: 'Highlander', label: '海兰德', color: '#8b5cf6' },
-  { key: 'WildHunt', label: '狂猎', color: '#84cc16' },
-  { key: 'ETC', label: '其他', color: '#6b7280' },
+// ═══ 学校配置（主题色；标签走 i18n） ═══
+const SCHOOLS: { key: School; color: string }[] = [
+  { key: 'Abydos', color: '#eab308' },
+  { key: 'Gehenna', color: '#ef4444' },
+  { key: 'Millennium', color: '#3b82f6' },
+  { key: 'Trinity', color: '#a855f7' },
+  { key: 'Hyakkiyako', color: '#06b6d4' },
+  { key: 'Shanhaijing', color: '#f97316' },
+  { key: 'RedWinter', color: '#ec4899' },
+  { key: 'SRT', color: '#22c55e' },
+  { key: 'Valkyrie', color: '#6366f1' },
+  { key: 'Arius', color: '#78716c' },
+  { key: 'Highlander', color: '#8b5cf6' },
+  { key: 'WildHunt', color: '#84cc16' },
+  { key: 'ETC', color: '#6b7280' },
 ]
 
-const BULLET_TYPES: { key: BulletType | ''; label: string }[] = [
-  { key: 'Explosion', label: '爆发' },
-  { key: 'Pierce', label: '贯穿' },
-  { key: 'Mystic', label: '神秘' },
-  { key: 'Sonic', label: '振动' },
-]
+const BULLET_KEYS: BulletType[] = ['Explosion', 'Pierce', 'Mystic', 'Sonic']
 
-const ARMOR_TYPES: { key: ArmorType | ''; label: string }[] = [
-  { key: 'LightArmor', label: '轻装甲' },
-  { key: 'HeavyArmor', label: '重装甲' },
-  { key: 'Unarmed', label: '特殊装甲' },
-  { key: 'ElasticArmor', label: '弹力装甲' },
-  { key: 'CompositeArmor', label: '复合装甲' },
-]
+const ARMOR_KEYS: ArmorType[] = ['LightArmor', 'HeavyArmor', 'Unarmed', 'ElasticArmor', 'CompositeArmor']
 
-const WEAPON_TYPES: { key: WeaponType | ''; label: string }[] = [
-  { key: 'AR', label: 'AR' }, { key: 'MG', label: 'MG' }, { key: 'SG', label: 'SG' },
-  { key: 'SMG', label: 'SMG' }, { key: 'SR', label: 'SR' }, { key: 'HG', label: 'HG' },
-  { key: 'RL', label: 'RL' }, { key: 'GL', label: 'GL' }, { key: 'RG', label: 'RG' },
-  { key: 'MT', label: 'MT' }, { key: 'FT', label: 'FT' },
+const WEAPON_KEYS: WeaponType[] = [
+  'AR', 'MG', 'SG', 'SMG', 'SR', 'HG', 'RL', 'GL', 'RG', 'MT', 'FT',
 ]
 
 type FilterSectionType = 'school' | 'bullet' | 'armor' | 'weapon'
@@ -56,13 +42,6 @@ interface FilterSection {
   label: string
   options: { key: string; label: string; color?: string }[]
 }
-
-const FILTER_SECTIONS: FilterSection[] = [
-  { type: 'school', label: '学校', options: SCHOOLS.map(({ key, label, color }) => ({ key, label, color })) },
-  { type: 'bullet', label: '攻击类型', options: BULLET_TYPES },
-  { type: 'armor', label: '装甲类型', options: ARMOR_TYPES },
-  { type: 'weapon', label: '武器类型', options: WEAPON_TYPES },
-]
 
 // ═══ 子弹类型 → 图标色 ═══
 const BULLET_COLORS: Record<BulletType, string> = {
@@ -87,6 +66,13 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
   const [query, setQuery] = useState('')
   const [focusIdx, setFocusIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const filterSections: FilterSection[] = useMemo(() => [
+    { type: 'school', label: t.search.filter_school, options: SCHOOLS.map(({ key, color }) => ({ key, label: t.school[key], color })) },
+    { type: 'bullet', label: t.search.filter_bullet, options: BULLET_KEYS.map((key) => ({ key, label: t.bullet[key] })) },
+    { type: 'armor', label: t.search.filter_armor, options: ARMOR_KEYS.map((key) => ({ key, label: t.armor[key] })) },
+    { type: 'weapon', label: t.search.filter_weapon, options: WEAPON_KEYS.map((key) => ({ key, label: key })) },
+  ], [t])
 
   // ——— 筛选状态 ———
   const [selectedFilters, setSelectedFilters] = useState<
@@ -349,8 +335,7 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                       />
                       <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                        {SCHOOLS.find((sc) => sc.key === student.School)?.label ??
-                          student.School}
+                        {t.school[student.School] ?? student.School}
                       </span>
                       <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>·</span>
                       <span className="text-[11px] font-game" style={{ color: 'var(--text-muted)' }}>
@@ -361,16 +346,16 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
                         {student.WeaponType}
                       </span>
                       <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>·</span>
-                      <span className="text-[11px] font-game" style={{ 
+                      <span className="text-[11px] font-game" style={{
                         color: BULLET_COLORS[student.BulletType] ?? 'var(--text-muted)',
                       }}>
-                        {BULLET_TYPES.find((bt) => bt.key === student.BulletType)?.label ?? student.BulletType}
+                        {t.bullet[student.BulletType] ?? student.BulletType}
                       </span>
                       <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>·</span>
-                      <span className="text-[11px] font-game" style={{ 
+                      <span className="text-[11px] font-game" style={{
                         color: ARMOR_COLORS[student.ArmorType] ?? 'var(--text-muted)',
                       }}>
-                        {ARMOR_TYPES.find((at) => at.key === student.ArmorType)?.label ?? student.ArmorType}
+                        {t.armor[student.ArmorType] ?? student.ArmorType}
                       </span>
                     </div>
                   </div>
@@ -419,7 +404,7 @@ export function StudentSearch({ squadType, excludeIds = [], onSelect }: StudentS
       >
         {/* —— 折叠式筛选 —— */}
         <div className="flex-1 overflow-y-auto min-h-0 space-y-1.5">
-          {FILTER_SECTIONS.map((section) => {
+          {filterSections.map((section) => {
             const selectedSet = selectedFilters[section.type]
             const isCollapsed = collapsedMap[section.type]
             const count = selectedSet.size

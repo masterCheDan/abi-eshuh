@@ -14,7 +14,7 @@ export function SkillPanel() {
   )
 
   return (
-    <div className="rounded-lg p-3 border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+    <div className="ba-panel ba-cut-panel p-3">
       <div className="flex items-center gap-2 mb-2">
         <button
           onClick={() => setCollapsed((c) => !c)}
@@ -23,7 +23,7 @@ export function SkillPanel() {
         >
           {collapsed ? '▶' : '▼'}
         </button>
-        <h2 className="text-sm font-semibold text-gray-200">{t.skill.title}</h2>
+        <h2 className="ba-eyebrow">{t.skill.title}</h2>
       </div>
 
       {!collapsed && (assignedStudents.length === 0

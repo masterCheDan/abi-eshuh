@@ -8,16 +8,21 @@
 export { StudentState } from './model/types'
 export type {
   Intent,
+  SkillRef,
+  TriggerSource,
   BattleEnv,
   Formation,
   ActionRecord,
   ActionType,
   SimulationError,
   SimulationResult,
+  EffectAuditRecord,
   StudentRuntimeState,
   CalibrationEntry,
   TimelineBlock,
   ShareCodePayload,
+  ShareCodePayloadV2,
+  ShareCodeEventV2,
 } from './model/types'
 
 // FSM
@@ -39,7 +44,7 @@ export {
 export type { NsTriggerContext, NsTriggerResult } from './system/triggerScheduler'
 
 // Cost System
-export { computeCostTimeline, costAtFrame } from './system/costSystem'
+export { computeCostTimeline, costAtFrame, COST_SCALE } from './system/costSystem'
 export type { CostFrame } from './system/costSystem'
 
 // Simulation Engine

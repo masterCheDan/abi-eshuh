@@ -5,6 +5,7 @@ import { useSimulationStore } from './stores/useSimulationStore'
 import { useThemeStore, type ThemeMode } from './stores/useThemeStore'
 import { Timeline } from './components/timeline/Timeline'
 import { EventLog } from './components/timeline/EventLog'
+import { EffectAuditPanel } from './components/timeline/EffectAuditPanel'
 import { SquadPanel } from './components/squad/SquadPanel'
 import { CardOrderEditor } from './components/squad/CardOrderEditor'
 import { SkillPanel } from './components/skill-panel/SkillPanel'
@@ -18,7 +19,7 @@ const LOCALE_LABELS: Record<SupportedLocale, string> = {
   ja: '日本語',
 }
 
-const THEME_LABELS: Record<ThemeMode, string> = { light: '☀️', dark: '🌙', auto: '🔄' }
+const THEME_LABELS: Record<ThemeMode, string> = { light: '☀ Light', dark: '🌙 Dark', auto: '🔄 Auto' }
 
 function AppContent() {
   const { loadStudents, getStudent } = useStudentStore()
@@ -31,16 +32,15 @@ function AppContent() {
       // 初始推演
       useSimulationStore.getState().tick()
     })
-    useThemeStore.getState().setMode('dark')
   }, [loadStudents, getStudent])
 
   return (
     <div className="h-screen flex flex-col text-[color:var(--text-primary)]" style={{ background: 'var(--bg-app)' }}>
       {/* 顶部标题栏 */}
-      <header className="shrink-0 px-4 py-2 border-b flex items-center justify-center relative" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+      <header className="ba-header shrink-0 px-4 py-2 flex items-center justify-center relative">
         <h1 className="text-2xl font-game tracking-wide">
           <span className="text-[color:var(--text-primary)]">Abi-</span>
-          <span className="text-blue-400">Eshuh</span>
+          <span style={{ color: 'var(--accent)', textShadow: '0 0 10px var(--glow-cyan)' }}>Eshuh</span>
         </h1>
 
         <div className="absolute right-4 flex items-center gap-2">
@@ -48,7 +48,7 @@ function AppContent() {
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as ThemeMode)}
-            className="text-xs rounded px-2 py-1 border"
+            className="ba-cut-btn text-xs px-2 py-1 border"
             style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
           >
             {Object.entries(THEME_LABELS).map(([key, label]) => (
@@ -60,7 +60,7 @@ function AppContent() {
           <select
             value={locale}
             onChange={(e) => setLocale(e.target.value as SupportedLocale)}
-            className="text-xs rounded px-2 py-1 border"
+            className="ba-cut-btn text-xs px-2 py-1 border"
             style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
           >
             {Object.entries(LOCALE_LABELS).map(([key, label]) => (
@@ -85,8 +85,9 @@ function AppContent() {
           <div className="flex-1 min-w-0">
             <Timeline />
           </div>
-          <aside className="shrink-0" style={{ width: 'clamp(200px, 14vw, 300px)' }}>
-            <EventLog />
+          <aside className="shrink-0 flex flex-col gap-3" style={{ width: 'clamp(200px, 14vw, 300px)' }}>
+            <div className="flex-1 min-h-0"><EventLog /></div>
+            <EffectAuditPanel />
           </aside>
         </main>
       </div>

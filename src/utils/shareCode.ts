@@ -10,6 +10,7 @@
 import type { StudentLane } from '../types/timeline'
 import * as v001 from './shareCode/v001'
 import * as v1 from './shareCode/v1'
+import * as v2 from './shareCode/v2'
 
 /* ══════════════════════════════════════════════════════
    版本注册表
@@ -24,6 +25,7 @@ export interface ShareCodeResult {
 export type { ImportData, ImportEvent } from './shareCode/v001'
 /** v1.0.0 导入数据结构 */
 export type { ImportDataV1 } from './shareCode/v1'
+export type { ImportDataV2, ImportEventV2 } from './shareCode/v2'
 
 interface CodecEntry {
   version: string
@@ -36,9 +38,10 @@ interface CodecEntry {
 const CODECS: Record<string, CodecEntry> = {
   [v001.VERSION]: { version: v001.VERSION, encode: v001.encode as (...args: unknown[]) => string, decode: v001.decode as (raw: string) => unknown },
   [v1.VERSION]: { version: v1.VERSION, encode: v1.encode as (...args: unknown[]) => string, decode: v1.decode as (raw: string) => unknown, isJson: true },
+  [v2.VERSION]: { version: v2.VERSION, encode: v2.encode as (...args: unknown[]) => string, decode: v2.decode as (raw: string) => unknown, isJson: true },
 }
 
-const CURRENT_VERSION = v1.VERSION
+const CURRENT_VERSION = v2.VERSION
 
 /* ══════════════════════════════════════════════════════
    公开 API
