@@ -9,6 +9,9 @@ import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { SkillIcon } from './SkillIcon'
 import { useBossStore } from '../../stores/useBossStore'
 import { useI18n, tpl } from '../../i18n'
+import { TargetPicker } from './TargetPicker'
+import { fixedSkillTargetIds, skillTargetPolicy, type SkillTargetPolicy } from '../../engine/system/skillTargeting'
+import { StudentRankSelector } from '../squad/StudentRankSelector'
 
 interface StudentSkillCardProps {
     student: Student
@@ -24,6 +27,12 @@ const ARMOR_COLORS: Record<string, string> = {
 }
 
 const TERRAIN_KEYS = ['Street', 'Outdoor', 'Indoor'] as const
+
+type ManualTargetPolicy = Extract<SkillTargetPolicy, 'select-ally' | 'select-any'>
+
+function resolvedTargetIds(policy: SkillTargetPolicy, studentId: number, selected: number[]): number[] {
+    return policy === 'select-ally' || policy === 'select-any' ? selected : fixedSkillTargetIds(policy, studentId)
+}
 
 export function StudentSkillCard({ student }: StudentSkillCardProps) {
     const { t } = useI18n()
@@ -44,9 +53,11 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
     return (
         <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
             {/* ═══ 学生头部 ═══ */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-start gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                 {/* 头像 */}
-                <StudentAvatar student={student} size={44} />
+                <div className="shrink-0 pt-0.5">
+                    <StudentAvatar student={student} size={44} />
+                </div>
                 {/* 信息区 */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -77,46 +88,48 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: `${ARMOR_COLORS[student.ArmorType] || '#6b7280'}18`, color: ARMOR_COLORS[student.ArmorType] || '#6b7280' }}>
                             {t.armor[student.ArmorType] || student.ArmorType}
                         </span>
+                        <span className="mx-0.5 h-3 w-px shrink-0" style={{ background: 'var(--border-light)' }} />
+                        {/* 地形适性 */}
+                        <div className="flex items-center gap-1">
+                            {TERRAIN_KEYS.map((key) => {
+                                const adaptValue = student[key] as number
+                                const isActive = key === selectedBossTerrain
+                                return (
+                                    <div
+                                        key={key}
+                                        className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg ${isActive ? 'border' : ''}`}
+                                        style={{
+                                            background: isActive ? 'var(--accent-soft)' : 'transparent',
+                                            borderColor: isActive ? 'var(--accent)' : 'transparent',
+                                        }}
+                                    >
+                                        <img
+                                            src={`${import.meta.env.BASE_URL}ui/Terrain_${key}.png`}
+                                            alt=""
+                                            className="w-3.5 h-3.5 object-contain"
+                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                        />
+                                        <img
+                                            src={`${import.meta.env.BASE_URL}ui/Adaptresult${adaptValue}.png`}
+                                            alt=""
+                                            className="w-3 h-3 object-contain"
+                                            title={tpl(t.skill.terrain_adapt, { terrain: t.terrain[key] })}
+                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                        />
+                                    </div>
+                                )
+                            })}
+                        </div>
                     </div>
-                    {/* 地形适性 */}
-                    <div className="flex items-center gap-1.5 mt-1">
-                        {TERRAIN_KEYS.map((key) => {
-                            const adaptValue = student[key] as number
-                            const isActive = key === selectedBossTerrain
-                            return (
-                                <div
-                                    key={key}
-                                    className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg ${isActive ? 'border' : ''}`}
-                                    style={{
-                                        background: isActive ? 'var(--accent-soft)' : 'transparent',
-                                        borderColor: isActive ? 'var(--accent)' : 'transparent',
-                                    }}
-                                >
-                                    <img
-                                        src={`${import.meta.env.BASE_URL}ui/Terrain_${key}.png`}
-                                        alt=""
-                                        className="w-3.5 h-3.5 object-contain"
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                                    />
-                                    <img
-                                        src={`${import.meta.env.BASE_URL}ui/Adaptresult${adaptValue}.png`}
-                                        alt=""
-                                        className="w-3 h-3 object-contain"
-                                        title={tpl(t.skill.terrain_adapt, { terrain: t.terrain[key] })}
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                                    />
-                                </div>
-                            )
-                        })}
-                    </div>
+                    {slot && (
+                        <div className="mt-1.5">
+                            <StudentRankSelector slotIndex={slot.index} />
+                        </div>
+                    )}
                 </div>
-                {/* 星级 */}
-                <span className="text-[11px] shrink-0" style={{ color: 'var(--text-muted)' }}>
-                    {'★'.repeat(student.StarGrade)}
-                </span>
                 <button
                     onClick={() => setCollapsed((c) => !c)}
-                    className="text-[10px] w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
+                    className="mt-0.5 text-[10px] w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
                     style={{ color: 'var(--text-muted)' }}
                 >
                     {collapsed ? '▶' : '▼'}
@@ -165,9 +178,12 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
 function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: NonNullable<ReturnType<typeof getNsSkill>>; slotIndex: number; nsLevel: number }) {
     const { t } = useI18n()
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
-    const squadStudents = useSquadStore((s) => s.config.slots.filter(slot => slot.student).map(slot => slot.student!))
-    const [targetId, setTargetId] = useState(student.Id)
+    const slots = useSquadStore((s) => s.config.slots)
+    const squadStudents = useMemo(() => slots.filter(slot => slot.student).map(slot => slot.student!), [slots])
+    const [targetIds, setTargetIds] = useState<number[]>([])
     const ref = student.HasGear && student.Skills.G ? { kind: 'gear_public' } as const : { kind: 'public' } as const
+    const policy = skillTargetPolicy(ns.Effects)
+    const selectedTargetIds = resolvedTargetIds(policy, student.Id, targetIds)
 
     const handleAddNs = () => {
         addSkillBlock(slotIndex, {
@@ -175,8 +191,8 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
             name: ns.Name,
             startFrame: 0,
             studentId: student.Id,
-            targetId,
-            targetIds: [targetId],
+            targetId: selectedTargetIds[0] ?? student.Id,
+            targetIds: selectedTargetIds,
             skillRef: ref,
             triggerSource: 'manual',
         })
@@ -208,11 +224,9 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
                     )}
                 </div>
             </div>
-            <div className="px-3 pb-1 flex items-center gap-1.5 text-[10px]">
-                <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
-                <select value={targetId} onChange={(e) => setTargetId(Number(e.target.value))} className="rounded px-1 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
-                    {squadStudents.map(target => <option key={target.Id} value={target.Id}>{target.Name}</option>)}
-                </select>
+            <div className="px-3 pb-1">
+                {isManualTargetPolicy(policy) ? <TargetPicker options={targetOptions(policy, squadStudents, t.event_log.target_boss)} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} />
+                    : <FixedTarget policy={policy} t={t} />}
             </div>
             <div className="flex items-center justify-end gap-1.5 px-3 pb-2.5 pt-1">
                 <button
@@ -220,7 +234,7 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
                     onDragStart={(e) => {
                         e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                             type: 'ns', name: ns.Name, startFrame: 0,
-                            studentId: student.Id, targetId, targetIds: [targetId], skillRef: ref, triggerSource: 'manual',
+                            studentId: student.Id, targetId: selectedTargetIds[0] ?? student.Id, targetIds: selectedTargetIds, skillRef: ref, triggerSource: 'manual',
                         }))
                         e.dataTransfer.effectAllowed = 'copyMove'
                     }}
@@ -244,8 +258,11 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
 function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: Student['Skills']['EP']; slotIndex: number; ssLevel: number }) {
     const { t } = useI18n()
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
-    const squadStudents = useSquadStore((s) => s.config.slots.filter(slot => slot.student).map(slot => slot.student!))
-    const [targetId, setTargetId] = useState(student.Id)
+    const slots = useSquadStore((s) => s.config.slots)
+    const squadStudents = useMemo(() => slots.filter(slot => slot.student).map(slot => slot.student!), [slots])
+    const [targetIds, setTargetIds] = useState<number[]>([])
+    const policy = skillTargetPolicy(ep.Effects)
+    const selectedTargetIds = resolvedTargetIds(policy, student.Id, targetIds)
 
     const handleAddSs = () => {
         addSkillBlock(slotIndex, {
@@ -253,8 +270,8 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
             name: ep.Name,
             startFrame: 0,
             studentId: student.Id,
-            targetId,
-            targetIds: [targetId],
+            targetId: selectedTargetIds[0] ?? student.Id,
+            targetIds: selectedTargetIds,
             skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
         })
     }
@@ -283,11 +300,9 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
                     </div>
                 </div>
             </div>
-            <div className="px-3 pb-1 flex items-center gap-1.5 text-[10px]">
-                <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
-                <select value={targetId} onChange={(e) => setTargetId(Number(e.target.value))} className="rounded px-1 py-0.5 border" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
-                    {squadStudents.map(target => <option key={target.Id} value={target.Id}>{target.Name}</option>)}
-                </select>
+            <div className="px-3 pb-1">
+                {isManualTargetPolicy(policy) ? <TargetPicker options={targetOptions(policy, squadStudents, t.event_log.target_boss)} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} />
+                    : <FixedTarget policy={policy} t={t} />}
             </div>
             <div className="flex items-center justify-end gap-1.5 px-3 pb-2.5 pt-1">
                 <button
@@ -295,7 +310,7 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
                     onDragStart={(e) => {
                         e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                             type: 'ss', name: ep.Name, startFrame: 0,
-                            studentId: student.Id, targetId, targetIds: [targetId],
+                            studentId: student.Id, targetId: selectedTargetIds[0] ?? student.Id, targetIds: selectedTargetIds,
                             skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
                         }))
                         e.dataTransfer.effectAllowed = 'copyMove'
@@ -314,4 +329,18 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
             </div>
         </div>
     )
+}
+
+function isManualTargetPolicy(policy: SkillTargetPolicy): policy is ManualTargetPolicy {
+    return policy === 'select-ally' || policy === 'select-any'
+}
+
+function targetOptions(policy: ManualTargetPolicy, students: Student[], bossLabel: string) {
+    const allies = students.map(target => ({ id: target.Id, label: target.Name }))
+    return policy === 'select-any' ? [{ id: -1, label: bossLabel }, ...allies] : allies
+}
+
+function FixedTarget({ policy, t }: { policy: Exclude<SkillTargetPolicy, ManualTargetPolicy>; t: ReturnType<typeof useI18n>['t'] }) {
+    const label = policy === 'self' ? t.skill.target_self : policy === 'boss' ? t.event_log.target_boss : policy === 'mixed' ? `${t.skill.target_self} / ${t.event_log.target_boss}` : '固定编队范围'
+    return <div className="flex items-center gap-1.5 text-[10px]"><span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span><span className="rounded px-2 py-1" style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)' }}>{label}</span></div>
 }

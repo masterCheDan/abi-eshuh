@@ -34,9 +34,16 @@ import type {
 import { StudentState } from '../model/types'
 import { isInterruptible } from '../model/fsm'
 import { TriggerScheduler, getNsSkill, getNsDuration } from '../system/triggerScheduler'
-import { computeCostTimeline, costAtFrame, collectCostChanges, COST_SCALE } from '../system/costSystem'
+import {
+  computeCostTimeline,
+  costAtFrame,
+  collectCostChanges,
+  COST_SCALE,
+  formationMaxCost,
+} from '../system/costSystem'
 import { StudentEffectSystem, resolveSkill, type ResolvedSkill } from '../system/studentEffectSystem'
 import { automaticTriggerSpecs } from '../system/triggerSpecs'
+import { CardOrderSystem, type CardPlayPlan } from '../system/cardOrderSystem'
 
 // ═══════════════════════════════════════════════════
 // Engine 门面
@@ -97,17 +104,60 @@ export class SimulationEngine {
       if (studentId != null) runtimes.set(slot, this.initRuntime(slot, studentId))
     }
 
-    const effects = new StudentEffectSystem(this.students, this.formation)
-    // 入场常驻技能是唯一无需用户事件的学生技能。带条件的 EP 仍须用户手动确认。
+    const effects = new StudentEffectSystem(this.students, this.formation, this.env)
+    const cards = new CardOrderSystem(this.formation, this.students)
+    let initialCostUnits = 0
+    // Only versioned battle-start clauses are automatic. Later clauses in the
+    // same NS/SS remain manual facts and are excluded by effectIndices.
     for (const runtime of runtimes.values()) {
       const student = this.students.get(runtime.studentId)
       if (!student) continue
       for (const spec of automaticTriggerSpecs(student)) {
         const ref = spec.skillRef
-        const skill = resolveSkill(student, ref, this.getExLevel(runtime.slotIndex))
+        if (
+          ref.kind === 'weapon_passive'
+          && (this.formation.uniqueWeaponLevels?.[runtime.slotIndex] ?? 0) < 2
+        ) continue
+        const skill = resolveSkill(student, ref, this.getSkillLevels(runtime.slotIndex))
         if (!skill) continue
+        const sourceEffects = spec.effectIndices == null
+          ? skill.effects
+          : spec.effectIndices.flatMap(index => {
+            const effect = skill.effects[index]
+            return effect ? [effect] : []
+          })
+        const openingSkill: ResolvedSkill = {
+          ...skill,
+          effects: [...sourceEffects, ...(spec.syntheticEffects ?? [])],
+        }
         const entryTargets = this.formation.slots.filter((id): id is number => id != null && id !== student.Id)
-        effects.schedule({ id: `entry-${runtime.slotIndex}-${ref.kind}`, frame: 0, type: 'SS_TRIGGER', issuerId: student.Id, targetIds: entryTargets, priority: 1, skillRef: ref, triggerSource: 'automatic' }, skill, 0)
+        if (openingSkill.effects.length) {
+          effects.schedule({
+            id: `entry-${runtime.slotIndex}-${ref.kind}`,
+            frame: 0,
+            type: skill.action === 'NS' ? 'NS_TRIGGER' : 'SS_TRIGGER',
+            issuerId: student.Id,
+            targetIds: entryTargets,
+            priority: 1,
+            skillRef: ref,
+            triggerSource: 'automatic',
+            trigger: { source: 'automatic' },
+          }, openingSkill, 0)
+        }
+        if (spec.initialCostByLevel?.length) {
+          const grant = spec.initialCostByLevel[skill.level - 1] ?? spec.initialCostByLevel[0] ?? 0
+          initialCostUnits += grant
+          effects.audit.push({
+            frame: 0,
+            issuerId: student.Id,
+            targetIds: [student.Id],
+            skillRef: ref,
+            effectIndex: -1,
+            effectType: 'CostGrant',
+            action: 'applied',
+            detail: `+${grant} COST`,
+          })
+        }
       }
     }
 
@@ -121,32 +171,64 @@ export class SimulationEngine {
 
     const activeLanes = this.formation.slots.filter((id): id is number => id != null)
     const baseRegen = activeLanes.reduce((sum, id) => sum + (this.students.get(id)?.Regen || 700), 0)
-    const maxCost = (this.formation.mode === 'normal' ? 10 : 20) * COST_SCALE
-    let availableCost = 0
+    const maxCost = formationMaxCost(this.formation, this.students)
+    let availableCost = Math.min(maxCost, Math.max(0, initialCostUnits * COST_SCALE))
+    let debtSource: { studentId: number; skillRef: SkillRef } | null = null
     const costHistory: number[] = []
 
     for (let frame = 0; frame <= maxFrame; frame++) {
+      cards.advance(frame)
       effects.advance(frame, runtimes)
+      cards.syncRuntime(frame, runtimes)
       this.updateCC(runtimes, frame)
       this.tickAllFSM(runtimes, frame)
-      availableCost = Math.min(maxCost, Math.max(0, availableCost + baseRegen + effects.getRegenDelta()))
+      const costBeforeRegen = availableCost
+      availableCost = Math.min(maxCost, availableCost + baseRegen + effects.getRegenDelta())
+      if (costBeforeRegen < 0 && availableCost >= 0 && debtSource) {
+        effects.recordCostDebtRepaid(debtSource.studentId, debtSource.skillRef, frame)
+        debtSource = null
+      }
 
       const frameIntents = [...(byFrame.get(frame) ?? [])].sort((a, b) => a.priority - b.priority)
       for (const intent of frameIntents) {
-        const slot = this.resolveSlot(intent.issuerId)
-        const runtime = runtimes.get(slot)
-        const student = this.students.get(intent.issuerId)
-        if (slot < 0 || !runtime || !student) {
+        const ownerSlot = this.resolveSlot(intent.issuerId)
+        const ownerRuntime = runtimes.get(ownerSlot)
+        const ownerStudent = this.students.get(intent.issuerId)
+        if (ownerSlot < 0 || !ownerRuntime || !ownerStudent) {
           errors.push({ frame, issuerId: intent.issuerId, message: 'caster is not in formation', type: 'INVALID_TARGET' })
           continue
         }
-        const ref = this.intentSkillRef(intent, student)
-        const skill = resolveSkill(student, ref, this.getExLevel(slot))
+        const requestedRef = this.intentSkillRef(intent, ownerStudent)
+        let cardPlan: CardPlayPlan | undefined
+        if (intent.type === 'EX_CAST') {
+          const prepared = cards.preparePlay(ownerSlot, requestedRef, intent)
+          if (typeof prepared === 'string') {
+            errors.push({
+              frame,
+              issuerId: intent.issuerId,
+              message: prepared,
+              type: prepared === 'card_order_violation' ? 'OUT_OF_WINDOW' : 'INVALID_CONDITION',
+            })
+            continue
+          }
+          cardPlan = prepared
+        }
+
+        const executionSlot = cardPlan?.executorSlot ?? ownerSlot
+        const runtime = runtimes.get(executionSlot)
+        const student = this.students.get(cardPlan?.executorStudentId ?? intent.issuerId)
+        const ref = cardPlan?.skillRef ?? requestedRef
+        if (!runtime || !student) {
+          errors.push({ frame, issuerId: intent.issuerId, message: 'skill executor is not in formation', type: 'INVALID_TARGET' })
+          continue
+        }
+        const executionIntent: Intent = { ...intent, issuerId: student.Id, skillRef: ref }
+        const skill = resolveSkill(student, ref, this.getSkillLevels(executionSlot))
         if (!skill) {
           errors.push({ frame, issuerId: intent.issuerId, message: 'skill reference is not available', type: 'INVALID_CONDITION' })
           continue
         }
-        const effectError = effects.validate(intent, skill, runtimes)
+        const effectError = effects.validate(executionIntent, skill, runtimes, cardPlan?.allowExtraEx === true)
         if (effectError) {
           errors.push({ frame, issuerId: intent.issuerId, message: effectError, type: effectError.includes('target') ? 'INVALID_TARGET' : 'INVALID_CONDITION' })
           continue
@@ -157,36 +239,61 @@ export class SimulationEngine {
         }
 
         const isEx = skill.action === 'EX'
-        if (isEx && !this.isInWindow(slot)) {
-          errors.push({ frame, issuerId: intent.issuerId, message: 'card_order_violation', type: 'OUT_OF_WINDOW' })
-          continue
-        }
-        const cost = Math.max(0, skill.cost + effects.getCostAdjustment(student.Id)) * COST_SCALE
-        if (isEx && availableCost < cost) {
+        const baseCost = cardPlan ? cards.effectiveBaseCost(cardPlan, skill.cost) : skill.cost
+        const cost = effects.getEffectiveCost(student.Id, baseCost) * COST_SCALE
+        const borrowLimit = effects.getCostBorrowLimit(student.Id) * COST_SCALE
+        if (isEx && cost > 0 && availableCost < cost && availableCost - cost < -borrowLimit) {
           errors.push({ frame, issuerId: intent.issuerId, message: `Cost exceeded at frame ${frame}`, type: 'COST_EXCEEDED' })
           continue
         }
-        if (!this.applyResolvedIntent(intent, runtime, student, skill, frame, actionLogs)) {
+        if (!this.applyResolvedIntent(executionIntent, runtime, student, skill, frame, actionLogs)) {
           errors.push({ frame, issuerId: intent.issuerId, message: 'state transition rejected', type: 'COOLDOWN' })
           continue
         }
         if (isEx) {
           availableCost -= cost
+          if (availableCost < 0) {
+            debtSource = { studentId: student.Id, skillRef: ref }
+            effects.recordCostDebt(student.Id, ref, frame, availableCost / COST_SCALE)
+          }
           effects.consumeCostModifiers(student.Id, frame)
-          this.advanceWindow(slot)
+          if (cardPlan) {
+            const cardResult = cards.commitPlay(cardPlan, intent, frame)
+            for (const hanakoId of cardResult.waterBuffStudentIds) {
+              const hanakoSlot = this.resolveSlot(hanakoId)
+              const hanako = this.students.get(hanakoId)
+              if (hanakoSlot < 0 || !hanako) continue
+              const passiveRef: SkillRef = { kind: 'extra_passive' }
+              const passive = resolveSkill(hanako, passiveRef, this.getSkillLevels(hanakoSlot))
+              if (!passive) continue
+              effects.schedule({
+                id: `water-gauge-${hanakoId}-${frame}`,
+                frame,
+                type: 'SS_TRIGGER',
+                issuerId: hanakoId,
+                targetIds: [hanakoId],
+                priority: 2,
+                skillRef: passiveRef,
+                triggerSource: 'automatic',
+                trigger: { source: 'automatic' },
+              }, passive, frame)
+            }
+          }
         }
-        effects.schedule(intent, skill, frame)
+        effects.schedule(executionIntent, skill, frame)
       }
       costHistory.push(availableCost)
     }
 
     return {
       maxFrame,
+      maxCost,
       costHistory,
       actionLogs,
       errors,
-      effectAudit: effects.audit,
-      window: this.formation.deckOrder ? { left: this.windowLeft, size: this.formation.mode === 'normal' ? 3 : 5, deck: this.formation.deckOrder } : undefined,
+      effectAudit: [...effects.audit, ...cards.audit].sort((left, right) => left.frame - right.frame),
+      effectLedger: effects.ledger,
+      window: cards.snapshot(),
       finalRuntimes: runtimes,
     }
   }
@@ -213,11 +320,11 @@ export class SimulationEngine {
     // ── Cost 时间线 ──
     // 先将 Intent 注入到 lanes 中以便 costSystem 计算
     this.injectIntentsToLanes(intents)
-    const costTimeline = computeCostTimeline(this.lanes, this.formation.mode, maxFrame)
+    const maxCost = formationMaxCost(this.formation, this.students)
+    const costTimeline = computeCostTimeline(this.lanes, this.formation.mode, maxFrame, maxCost)
     const costHistory: number[] = []
 
     // ── 实时 Cost 追踪（用于正确的消耗校验）──
-    const maxCost = (this.formation.mode === 'normal' ? 10 : 20) * COST_SCALE
     const activeLanes = this.lanes.filter(l => l.student)
     const baseRegen = activeLanes.reduce((sum, l) => sum + (l.student!.Regen || 700), 0)
 
@@ -311,22 +418,26 @@ export class SimulationEngine {
 
     // 仅在用户显式设置了 deckOrder 时暴露窗口信息
     let windowInfo:
-      | { left: number; size: number; deck: number[] }
+      | { left: number; size: number; deck: number[]; hand: []; drawPile: [] }
       | undefined
     if (this.formation.deckOrder) {
       windowInfo = {
         left: this.windowLeft,
         size: this.formation.mode === 'normal' ? 3 : 5,
         deck: this.formation.deckOrder,
+        hand: [],
+        drawPile: [],
       }
     }
 
     return {
       maxFrame,
+      maxCost,
       costHistory,
       actionLogs,
       errors,
       effectAudit: [],
+      effectLedger: [],
       window: windowInfo,
       finalRuntimes: runtimes,
     }
@@ -480,11 +591,20 @@ export class SimulationEngine {
       nsTriggered: false,
       specialStacks: {},
       shield: 0,
+      summons: {},
     }
   }
 
   private getExLevel(slot: number): number {
     return this.formation.skillLevels?.[slot] ?? 5
+  }
+
+  private getSkillLevels(slot: number): { ex: number; ns: number; ss: number } {
+    return {
+      ex: this.getExLevel(slot),
+      ns: this.formation.publicSkillLevels?.[slot] ?? 10,
+      ss: this.formation.passiveSkillLevels?.[slot] ?? 10,
+    }
   }
 
   private intentSkillRef(intent: Intent, student: Student): SkillRef {

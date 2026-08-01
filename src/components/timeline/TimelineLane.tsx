@@ -3,15 +3,24 @@ import type { DragEvent } from 'react'
 import type { StudentLane, SkillBlock } from '../../types/timeline'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { useSimulationStore } from '../../stores/useSimulationStore'
 import { useThemeStore } from '../../stores/useThemeStore'
 import { DRAG_SKILL_KEY } from '../skill-panel/SkillAddForm'
 import { SkillIcon } from '../skill-panel/SkillIcon'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { studentSkillStyles } from '../../utils/studentColors'
-import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
+import {
+  computeCostSimulation,
+  canAffordSkillAtFrame,
+  costAtFrame,
+  costFramesFromResult,
+  effectiveSkillCostAtFrame,
+  COST_SCALE,
+} from '../../utils/costCalc'
 import type { CostFrame } from '../../utils/costCalc'
 import { CalibrationMenu } from './CalibrationMenu'
 import { useI18n } from '../../i18n'
+import { SkillEventEditor } from './SkillEventEditor'
 
 /** 用于内部拖拽移动的 dataTransfer 键名 */
 const DRAG_MOVE_KEY = 'tl-skill-move'
@@ -214,9 +223,11 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
   const updateSkillBlock = useTimelineStore((s) => s.updateSkillBlock)
   const allLanes = useTimelineStore((s) => s.lanes)
   const squadMode = useSquadStore((s) => s.config.mode)
-  const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
+  const simulation = useSimulationStore((s) => s.result)
+  const costTimeline = useMemo(() => costFramesFromResult(simulation), [simulation])
   const [dragOverFrame, setDragOverFrame] = useState<number | null>(null)
   const [calibrationTarget, setCalibrationTarget] = useState<{ skillIndex: number; x: number; y: number } | null>(null)
+  const [editingSkillIndex, setEditingSkillIndex] = useState<number | null>(null)
   const calibRef = useRef<{ skillIndex: number; startMouseX: number; startOffset: number } | null>(null)
 
   const frameFromEvent = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -249,16 +260,6 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
     return set
   }, [allLanes, slotIndex])
 
-  // 排除本轨道的 Cost 曲线（用于渲染层越界检测，避免技能自身影响判定）
-  const costExcludingLane = useMemo(() => {
-    const lanesWithout = allLanes.map(l =>
-      l.slotIndex === slotIndex
-        ? { ...l, skills: [] }
-        : l
-    )
-    return computeCostTimeline(lanesWithout, squadMode)
-  }, [allLanes, squadMode, slotIndex])
-
   // ── 从技能面板拖入 / 内部移动 ──
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -288,6 +289,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
       const footprint = getFootprint(moved)
       let frame = snapToNonOverlap(ranges, frameFromEvent(e), footprint)
       let costTimelineRef: CostFrame[] = costTimeline
+      let maxCostRef = (simulation?.maxCost ?? (squadMode === 'normal' ? 10 : 20) * COST_SCALE) / COST_SCALE
 
       if (moved.type === 'ex') {
         // 排除自身后重新计算 Cost（避免被拖卡自己的扣减拦住前移）
@@ -295,19 +297,26 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
           if (l.slotIndex !== slotIndex) return l
           return { ...l, skills: l.skills.filter((_, i) => i !== skillIndex) }
         })
-        costTimelineRef = computeCostTimeline(lanesWithoutSelf, squadMode)
-        const exCost = (moved.skillCost ?? student!.Skills.E.Cost[0]) * COST_SCALE
+        const costSimulationRef = computeCostSimulation(lanesWithoutSelf, squadMode)
+        costTimelineRef = costFramesFromResult(costSimulationRef)
+        maxCostRef = costSimulationRef.maxCost / COST_SCALE
+        const baseCost = moved.skillCost ?? student!.Skills.E.Cost[0]
         while (frame <= 5400) {
           while (globalExFrames.has(frame)) frame++
-          if (frame > 5400 || costAtFrame(costTimelineRef, frame) >= exCost) break
+          const requiredCost = effectiveSkillCostAtFrame(
+            costSimulationRef,
+            moved.studentId,
+            frame,
+            baseCost,
+          ) * COST_SCALE
+          if (frame > 5400 || canAffordSkillAtFrame(costSimulationRef, moved.studentId, frame, requiredCost)) break
           frame++
         }
         if (frame > 5400) return
       }
 
       // 智能磁吸 → Cost 整数节点
-      const maxCost = squadMode === 'normal' ? 10 : 20
-      frame = snapToCostNode(frame, costTimelineRef, maxCost)
+      frame = snapToCostNode(frame, costTimelineRef, maxCostRef)
 
       moveSkillBlock(fromSlotIndex, skillIndex, slotIndex, frame)
       return
@@ -333,19 +342,28 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
       let finalFrame = snapToNonOverlap(exRanges, proposedFrame, footprint)
 
       // 规则2+3：跨轨道 EX 唯一 + COST 充足，合并循环到全部满足
+      let candidateCostTimeline = costTimeline
       {
-        const exCost = (dragged.skillCost ?? student!.Skills.E.Cost[0]) * COST_SCALE
+        const baseCost = dragged.skillCost ?? student!.Skills.E.Cost[0]
+        const costSimulationRef = simulation ?? computeCostSimulation(allLanes, squadMode)
+        if (candidateCostTimeline.length === 0) candidateCostTimeline = costFramesFromResult(costSimulationRef)
         while (finalFrame <= 5400) {
           while (globalExFrames.has(finalFrame)) finalFrame++
-          if (finalFrame > 5400 || costAtFrame(costTimeline, finalFrame) >= exCost) break
+          const requiredCost = effectiveSkillCostAtFrame(
+            costSimulationRef,
+            dragged.studentId,
+            finalFrame,
+            baseCost,
+          ) * COST_SCALE
+          if (finalFrame > 5400 || canAffordSkillAtFrame(costSimulationRef, dragged.studentId, finalFrame, requiredCost)) break
           finalFrame++
         }
         if (finalFrame > 5400) return
       }
 
       // 智能磁吸 → Cost 整数节点
-      const maxCost = squadMode === 'normal' ? 10 : 20
-      finalFrame = snapToCostNode(finalFrame, costTimeline, maxCost)
+      const maxCost = (simulation?.maxCost ?? (squadMode === 'normal' ? 10 : 20) * COST_SCALE) / COST_SCALE
+      finalFrame = snapToCostNode(finalFrame, candidateCostTimeline, maxCost)
 
       // 规则1b：NS/SS 被 EX 挤出 → 推到 EX 之后（同学生）
       const pushedNS = skills
@@ -484,11 +502,14 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
           // 高亮：错误面板点击时对应帧的 EX 块闪烁
           const isHighlighted = highlightedFrame != null && skill.startFrame === highlightedFrame && isEx
 
-          // 越界爆红检测：全局帧冲突 / Cost 不足（使用排除本轨道的 Cost 曲线）
+          // 越界爆红检测直接消费引擎验证结果，避免重复实现减费规则。
           const isWarning = isEx && (() => {
             if (globalExFrames.has(skill.startFrame)) return true
-            const exCost = (skill.skillCost ?? student.Skills.E.Cost[0]) * COST_SCALE
-            return costAtFrame(costExcludingLane, skill.startFrame) < exCost
+            return simulation?.errors.some(error =>
+              error.frame === skill.startFrame
+              && error.issuerId === student.Id
+              && ['COST_EXCEEDED', 'OUT_OF_WINDOW', 'COOLDOWN', 'INVALID_CONDITION', 'INVALID_TARGET'].includes(error.type)
+            ) ?? false
           })()
 
           const topOffset = totalRows <= 1
@@ -510,6 +531,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
                 onDragStart={(e) => handleSkillDragStart(e, i)}
                 onDragOver={(e) => { e.stopPropagation(); e.preventDefault() }}
                 onContextMenu={(e) => (skill.type === 'ns' || skill.type === 'ss') && handleContextMenu(e, i)}
+                onClick={() => setEditingSkillIndex(i)}
                 className="absolute flex items-center cursor-grab active:cursor-grabbing z-20 group"
                 style={{
                   left: x,
@@ -600,7 +622,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
                 <button
                   draggable={false}
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => removeSkillBlock(slotIndex, i)}
+                  onClick={(event) => { event.stopPropagation(); removeSkillBlock(slotIndex, i) }}
                   className="absolute -right-1 -top-1 w-4 h-4 flex items-center justify-center rounded-full bg-red-600/80 text-white text-[10px] leading-none opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 z-30"
                   title="删除技能"
                 >
@@ -689,6 +711,14 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
             updateSkillBlock(slotIndex, idx, { overrideOffset: offset })
           }}
           onClose={() => setCalibrationTarget(null)}
+        />
+      )}
+      {editingSkillIndex != null && skills[editingSkillIndex] && (
+        <SkillEventEditor
+          lanes={allLanes}
+          skill={skills[editingSkillIndex]}
+          onClose={() => setEditingSkillIndex(null)}
+          onSave={(patch) => updateSkillBlock(slotIndex, editingSkillIndex, patch)}
         />
       )}
     </div>

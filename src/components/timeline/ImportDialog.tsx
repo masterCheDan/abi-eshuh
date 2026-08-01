@@ -6,11 +6,12 @@ import { useI18n } from '../../i18n'
 import { decodeShareCode } from '../../utils/planExport'
 import type { ImportData } from '../../utils/planExport'
 import type { StudentLane } from '../../types/timeline'
-import type { SkillRef, TriggerSource } from '../../engine/model/types'
+import type { SkillRef, TriggerSource, TriggerEvidence } from '../../engine/model/types'
 
 type CompatibleImport = {
   studentIds: number[]
-  skills: Array<{ frame: number; casterSlot: number; targetSlot?: number; targetSlots?: number[]; skillRef?: SkillRef; triggerSource?: TriggerSource }>
+  skills: Array<{ frame: number; casterSlot: number; targetSlot?: number; targetSlots?: number[]; skillRef?: SkillRef; triggerSource?: TriggerSource; trigger?: TriggerEvidence }>
+  ranks?: Array<[number, number] | null>
 }
 
 function blockType(ref: SkillRef): 'ex' | 'ns' | 'ss' {
@@ -73,25 +74,29 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
     const newLanes: StudentLane[] = []
     const squadSlots: import('../../types/squad').SquadSlot[] = []
 
+    const mainSlotCount = studentIds.length > 6 ? 6 : 4
     for (let i = 0; i < studentIds.length; i++) {
       const sid = studentIds[i]
       const student = sid >= 0 && students[sid] ? students[sid] : null
-      const isMain = i < 4
+      const isMain = i < mainSlotCount
+      const rank = data.ranks?.[i]
 
       squadSlots.push({
         index: i,
         slotType: isMain ? 'Main' : 'Support',
-        label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - 3}`,
+        label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - mainSlotCount + 1}`,
         student,
         locked: !!student,
         exLevel: 5,
         nsLevel: 10,
         ssLevel: 10,
+        starLevel: student ? rank?.[0] ?? student.StarGrade : 0,
+        uniqueWeaponLevel: student ? rank?.[1] ?? 0 : 0,
       })
 
       newLanes.push({
         slotIndex: i,
-        label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - 3}`,
+        label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - mainSlotCount + 1}`,
         student,
         studentId: student?.Id ?? null,
         skills: [],
@@ -119,6 +124,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
         targetIds,
         skillRef: ref,
         triggerSource: ev.triggerSource ?? 'manual',
+        trigger: ev.trigger ?? { source: ev.triggerSource ?? 'manual' },
       })
     }
 

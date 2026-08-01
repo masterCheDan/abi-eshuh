@@ -21,6 +21,10 @@ export interface SquadSlot {
   nsLevel: number
   /** SS 技能等级 (1-10) */
   ssLevel: number
+  /** 当前养成星级（不得低于学生初始星级） */
+  starLevel: number
+  /** 专武等级；0=未解锁，1-4=专武星级 */
+  uniqueWeaponLevel: number
 }
 
 /** 队伍配置 */

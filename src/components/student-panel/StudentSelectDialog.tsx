@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { Student, SquadType } from '../../types/student'
 import { StudentSearch } from './StudentSearch'
 
@@ -31,7 +32,8 @@ export function StudentSelectDialog({
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  return (
+  // 队伍面板使用 clip-path，弹窗必须脱离该裁剪/层叠上下文，否则空槽位点击后遮罩会不可见。
+  return createPortal(
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
@@ -60,6 +62,6 @@ export function StudentSelectDialog({
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }
 

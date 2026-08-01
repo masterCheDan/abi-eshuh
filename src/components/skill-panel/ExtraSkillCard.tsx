@@ -2,17 +2,17 @@ import { useState, useMemo } from 'react'
 import type { Student, ExtraSkill } from '../../types/student'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { useSimulationStore } from '../../stores/useSimulationStore'
 import { SkillIcon } from './SkillIcon'
 import { useI18n } from '../../i18n'
-import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
-
-/** 归一化 Target：字符串包裹为数组，undefined → [] */
-function toArray(v: string | string[] | undefined): string[] {
-    if (v === undefined) return []
-    return typeof v === 'string' ? [v] : v
-}
-
-type TargetMode = 'none' | 'self' | 'boss' | 'striker' | 'any'
+import {
+    canAffordSkillAtFrame,
+    costBorrowLimitAtFrame,
+    effectiveSkillCostAtFrame,
+    COST_SCALE,
+} from '../../utils/costCalc'
+import { TargetPicker, type TargetOption } from './TargetPicker'
+import { fixedSkillTargetIds, skillTargetPolicy } from '../../engine/system/skillTargeting'
 
 interface ExtraSkillCardProps {
     student: Student
@@ -24,14 +24,12 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
     const slots = useSquadStore((s) => s.config.slots)
     const allLanes = useTimelineStore((s) => s.lanes)
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
-    const squadMode = useSquadStore((s) => s.config.mode)
-    const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
+    const simulation = useSimulationStore((s) => s.result)
     const squadStudents = useMemo(() => slots.filter((s) => s.student).map((s) => s.student!), [slots])
 
-    const slotIndex = useMemo(() => {
-        const slot = slots.find((s) => s.student?.Id === student.Id)
-        return slot?.index ?? -1
-    }, [slots, student.Id])
+    const slot = useMemo(() => slots.find((value) => value.student?.Id === student.Id), [slots, student.Id])
+    const slotIndex = slot?.index ?? -1
+    const exLevel = slot?.exLevel ?? 5
 
     // ── 时间输入 ──
     const [vMin, setMin] = useState('0')
@@ -58,81 +56,28 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
     const msVal = Math.min(999, parseInt(vMs) || 0)
     const totalFrames = min * 1800 + sec * 30 + frame
 
-    // ── 目标分类 ──
-    const classify = useMemo(() => {
-        const effects = extraSkill.Effects
-        const radius = extraSkill.Radius
-        const hasSummon = effects.some(ef => ef.Type === 'Summon')
-        if (hasSummon) return { mode: 'none' as TargetMode, isAoe: false }
+    const targetPolicy = useMemo(() => skillTargetPolicy(extraSkill.Effects), [extraSkill.Effects])
+    const isManualTarget = targetPolicy === 'select-ally' || targetPolicy === 'select-any'
+    const [selectedTargets, setSelectedTargets] = useState<number[]>([])
 
-        const tags = new Set<string>()
-        for (const ef of effects) {
-            for (const t of toArray(ef.Target)) {
-                if (t) tags.add(t)
-            }
-        }
-        const isAoe = !!(radius && radius.length > 0)
-        const hasEnemy = tags.has('Enemy')
-        const hasAlly = tags.has('Ally') || tags.has('AllyMain') || tags.has('AllySupport')
-        const hasSelf = tags.has('Self')
-        const hasAny = tags.has('Any')
-        const hasNone = tags.size === 0
-
-        // 0) 空 Effects（纯形态切换/被动触发）→ 自身
-        if (effects.length === 0) return { mode: 'self' as TargetMode, isAoe: false }
-
-        if (hasNone) return { mode: 'boss' as TargetMode, isAoe }
-        if (hasAny) return { mode: 'any' as TargetMode, isAoe }
-        if (hasEnemy && hasAlly) return { mode: 'any' as TargetMode, isAoe }
-        if (hasEnemy && hasSelf) return { mode: 'any' as TargetMode, isAoe }
-        if (hasSelf && !hasAlly && !hasEnemy) return { mode: 'self' as TargetMode, isAoe }
-        if (hasEnemy && !hasAlly) return { mode: 'boss' as TargetMode, isAoe }
-        if (hasAlly) return { mode: 'striker' as TargetMode, isAoe }
-        return { mode: 'boss' as TargetMode, isAoe }
-    }, [extraSkill.Effects, extraSkill.Radius])
-
-    const targetMode = classify.mode
-    const isAoe = classify.isAoe
-    const hasTarget = targetMode === 'boss' || targetMode === 'striker' || targetMode === 'any'
-
-    // ── 目标选择 ──
-    const [selectedTargets, setSelectedTargets] = useState<Set<number>>(() => {
-        const s = new Set<number>()
-        if (targetMode === 'none' || targetMode === 'self') s.add(student.Id)
-        else if (targetMode === 'boss' && !isAoe) s.add(-1)
-        return s
-    })
-
-    const targetOptions = useMemo(() => {
-        const opts: { value: number; label: string }[] = []
-        if (targetMode === 'boss' || targetMode === 'any') {
-            opts.push({ value: -1, label: t.event_log.target_boss })
-        }
-        if (targetMode === 'striker' || targetMode === 'any') {
-            for (const s of squadStudents) opts.push({ value: s.Id, label: s.Name })
-        }
-        return opts
-    }, [targetMode, squadStudents, t.event_log.target_boss])
-
-    const toggleTarget = (v: number) => {
-        setSelectedTargets(prev => {
-            const next = new Set(prev)
-            if (next.has(v)) next.delete(v)
-            else next.add(v)
-            return next
-        })
-    }
+    const targetOptions = useMemo<TargetOption[]>(() => {
+        const allies = squadStudents.map(s => ({ id: s.Id, label: s.Name }))
+        return targetPolicy === 'select-any' ? [{ id: -1, label: t.event_log.target_boss }, ...allies] : allies
+    }, [targetPolicy, squadStudents, t.event_log.target_boss])
 
     const effectiveTargets = (): number[] => {
-        if (targetMode === 'none' || targetMode === 'self') return [student.Id]
-        if (selectedTargets.size === 0) return [student.Id]
-        return Array.from(selectedTargets)
+        return isManualTarget ? selectedTargets : fixedSkillTargetIds(targetPolicy, student.Id)
     }
 
     // ── Cost ──
-    const skillCost = (extraSkill.Cost?.[0] ?? 0) * COST_SCALE
-    const availableCost = costAtFrame(costTimeline, totalFrames)
-    const hasEnoughCost = availableCost >= skillCost
+    const baseSkillCost = extraSkill.Cost?.[exLevel - 1] ?? extraSkill.Cost?.[0] ?? 0
+    const effectiveSkillCost = effectiveSkillCostAtFrame(simulation, student.Id, totalFrames, baseSkillCost)
+    const skillCost = effectiveSkillCost * COST_SCALE
+    const availableCost = simulation?.costHistory[Math.max(0, Math.min(totalFrames, simulation.maxFrame))] ?? 0
+    const borrowLimit = costBorrowLimitAtFrame(simulation, student.Id, totalFrames)
+    const hasEnoughCost = canAffordSkillAtFrame(simulation, student.Id, totalFrames, skillCost)
+    const borrowedCost = hasEnoughCost ? Math.max(0, skillCost - availableCost) : 0
+    const formatCost = (value: number) => (value / COST_SCALE).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
 
     // ── 时间冲突检查 ──
     const isTimeValid = useMemo(() => {
@@ -158,7 +103,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
         return true
     }, [totalFrames, extraSkill.Duration, slotIndex, allLanes])
 
-    const canAct = isTimeValid && hasEnoughCost
+    const canAct = isTimeValid && hasEnoughCost && effectiveTargets().length > 0
     const isExecutable = extraSkill.Duration > 0
 
     const handleAdd = () => {
@@ -171,7 +116,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
             targetIds,
             skillRef: { kind: 'extra_ex', extraSkillId: extraSkill.Id },
             triggerSource: 'manual',
-            skillCost: extraSkill.Cost?.[0] ?? 0,
+            skillCost: baseSkillCost,
             skillDuration: extraSkill.Duration || 0,
         })
     }
@@ -230,7 +175,8 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                             </span>
                             {extraSkill.Cost?.length > 0 && (
                                 <span className="font-game text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                                    {extraSkill.Cost[0]} COST
+                                    {baseSkillCost} COST
+                                    {effectiveSkillCost !== baseSkillCost && ` → ${effectiveSkillCost}`}
                                 </span>
                             )}
                         </div>
@@ -280,62 +226,8 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                     <span style={{ color: 'var(--text-muted)' }}>{extraSkill.Duration} {t.skill.frame}</span>
                 </div>
 
-                {/* ── 目标选择 - AoE ── */}
-                {hasTarget && isAoe && (
-                    <div className="mb-1.5">
-                        <div className="flex flex-wrap gap-1">
-                            {targetOptions.map(opt => {
-                                const checked = selectedTargets.has(opt.value)
-                                return (
-                                    <label
-                                        key={opt.value}
-                                        onClick={() => toggleTarget(opt.value)}
-                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg border cursor-pointer select-none transition-all text-[10px] ${checked
-                                            ? 'border-purple-500/60 text-purple-300 font-medium'
-                                            : 'border-gray-600/60 text-gray-500 hover:border-gray-500'
-                                            }`}
-                                        style={{ background: checked ? 'rgba(168,85,247,0.08)' : 'transparent' }}
-                                    >
-                                        <div className={`w-2.5 h-2.5 rounded border flex items-center justify-center transition-all ${checked ? 'bg-purple-500 border-purple-500' : 'border-gray-500'}`}>
-                                            {checked && (
-                                                <svg className="w-1.5 h-1.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                </svg>
-                                            )}
-                                        </div>
-                                        {opt.label}
-                                    </label>
-                                )
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* ── 目标选择 - 非AoE ── */}
-                {hasTarget && !isAoe && (
-                    <div className="flex items-center gap-1.5 text-[10px] mb-1.5">
-                        <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
-                        {targetMode === 'boss' ? (
-                            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                                {t.event_log.target_boss}
-                            </span>
-                        ) : (
-                            <select
-                                value={selectedTargets.size > 0 ? Array.from(selectedTargets)[0] : ''}
-                                onChange={(e) => {
-                                    if (e.target.value === '') return
-                                    setSelectedTargets(new Set([parseInt(e.target.value)]))
-                                }}
-                                className="rounded px-1.5 py-0.5 max-w-[100px] truncate border text-[10px]"
-                                style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
-                            >
-                                <option value="">{t.skill.target_none}</option>
-                                {targetOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        )}
-                    </div>
+                {isManualTarget ? <div className="mb-1.5"><TargetPicker options={targetOptions} selectedIds={selectedTargets} onChange={setSelectedTargets} label={t.skill.target} /></div> : (
+                    <div className="mb-1.5 text-[10px]"><span style={{ color: 'var(--text-muted)' }}>{t.skill.target} </span><span className="rounded px-2 py-1" style={{ color: targetPolicy === 'boss' ? '#fff' : 'var(--text-secondary)', background: targetPolicy === 'boss' ? 'var(--danger)' : 'var(--bg-surface)' }}>{targetPolicy === 'self' ? t.skill.target_self : targetPolicy === 'boss' ? t.event_log.target_boss : targetPolicy === 'mixed' ? `${t.skill.target_self} / ${t.event_log.target_boss}` : '固定编队范围'}</span></div>
                 )}
 
                 {/* ── 底部操作栏（精简） ── */}
@@ -345,23 +237,28 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                     )}
                     {isTimeValid && !hasEnoughCost && !isNaN(totalFrames) && (
                         <span className="text-[9px] text-red-400">
-                            {t.skill.cost_insufficient} ({skillCost}/{availableCost.toFixed(1)})
+                            {t.skill.cost_insufficient} ({formatCost(skillCost)}/{formatCost(availableCost)} COST)
+                        </span>
+                    )}
+                    {isTimeValid && borrowedCost > 0 && (
+                        <span className="text-[9px] text-amber-300">
+                            {t.skill.cost_overload} ({formatCost(borrowedCost)}/{borrowLimit} COST)
                         </span>
                     )}
                     <div className="flex-1" />
                     <button
-                        draggable={selectedTargets.size > 0}
+                        draggable={canAct}
                         onDragStart={(e) => {
                             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                                 type: 'ex', name: extraSkill.Name, startFrame: 0,
                                 studentId: student.Id, targetId: effectiveTargets()[0] ?? student.Id, targetIds: effectiveTargets(),
                                 skillRef: { kind: 'extra_ex', extraSkillId: extraSkill.Id }, triggerSource: 'manual',
-                                skillCost: extraSkill.Cost?.[0] ?? 0,
+                                skillCost: baseSkillCost,
                                 skillDuration: extraSkill.Duration || 0,
                             }))
                             e.dataTransfer.effectAllowed = 'copyMove'
                         }}
-                        className={`text-[10px] px-1.5 py-0.5 rounded border ${selectedTargets.size > 0 ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-30'}`}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border ${canAct ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-30'}`}
                         style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
                     >
                         ⠿

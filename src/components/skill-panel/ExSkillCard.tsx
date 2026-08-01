@@ -2,9 +2,18 @@ import { useState, useMemo } from 'react'
 import type { Student } from '../../types/student'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { useSimulationStore } from '../../stores/useSimulationStore'
 import { SkillIcon } from './SkillIcon'
 import { useI18n } from '../../i18n'
-import { computeCostTimeline, costAtFrame, COST_SCALE } from '../../utils/costCalc'
+import {
+  canAffordSkillAtFrame,
+  costBorrowLimitAtFrame,
+  effectiveSkillCostAtFrame,
+  COST_SCALE,
+} from '../../utils/costCalc'
+import { TargetPicker, type TargetOption } from './TargetPicker'
+import { fixedSkillTargetIds, skillTargetPolicy } from '../../engine/system/skillTargeting'
+import { applyCostOverloadRule, COST_OVERLOAD_RULES } from '../../engine/system/costOverloadRules'
 
 interface ExSkillCardProps { student: Student }
 
@@ -14,7 +23,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const [vSec, setSec] = useState('0')
   const [vFrame, setFrame] = useState('0')
   const [vMs, setMs] = useState('0')
-  const [targetId, setTargetId] = useState<number | null>(null)
+  const [targetIds, setTargetIds] = useState<number[]>([])
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const slots = useSquadStore((s) => s.config.slots)
 
@@ -22,112 +31,31 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const slotIndex = slot?.index ?? -1
 
   const squadStudents = useMemo(() => slots.filter((s) => s.student).map((s) => s.student!), [slots])
-  const strikers = useMemo(() => squadStudents.filter((s) => s.SquadType === 'Main'), [squadStudents])
   const allLanes = useTimelineStore((s) => s.lanes)
-  const squadMode = useSquadStore((s) => s.config.mode)
+  const simulation = useSimulationStore((s) => s.result)
   const ex = student.Skills.E
 
   // ── EX 等级 ──
   const exLevel = slot?.exLevel ?? 5
 
-  /** Cost 时间线（用于查询任意时点的 Cost） */
-  const costTimeline = useMemo(() => computeCostTimeline(allLanes, squadMode), [allLanes, squadMode])
-
-  /** 归一化 Target：字符串包裹为数组，undefined → [] */
-function toArray(v: string | string[] | undefined): string[] {
-    if (v === undefined) return []
-    return typeof v === 'string' ? [v] : v
-}
-
-/* ── 技能分类 ── */
-  type TargetMode = 'none' | 'self' | 'boss' | 'striker' | 'any'
-  const { targetMode, hasTarget } = useMemo(() => {
-    const effects = ex.Effects
-    const types = effects.map((e) => e.Type)
-
-    // 召唤类 → 无目标选择器
-    if (types.includes('Summon')) return { targetMode: 'none' as TargetMode, hasTarget: false }
-
-    // ── 收集所有显式 Target 值 ──
-    const allExplicit: string[] = []
-    for (const ef of effects) {
-      for (const t of toArray(ef.Target)) {
-        allExplicit.push(t)
-      }
-    }
-    const hasExplicitSelf = allExplicit.includes('Self')
-    const hasExplicitEnemy = allExplicit.includes('Enemy')
-    const hasExplicitAny = allExplicit.includes('Any')
-    const hasExplicitAlly = allExplicit.some(t =>
-      ['Ally', 'AllyMain', 'AllySupport'].includes(t),
-    )
-
-    // 0) 空 Effects（纯形态切换）→ 自身，无目标选择器
-    if (effects.length === 0) {
-      return { targetMode: 'self' as TargetMode, hasTarget: false }
-    }
-
-    // 1) 全部显式 Target 均为 Self → 仅自身（无论效果类型）
-    if (allExplicit.length > 0 && allExplicit.every((t) => t === 'Self')) {
-      return { targetMode: 'self' as TargetMode, hasTarget: false }
-    }
-
-    // 2) 全部显式 Target 均为 Enemy → Boss
-    if (allExplicit.length > 0 && allExplicit.every((t) => t === 'Enemy')) {
-      return { targetMode: 'boss' as TargetMode, hasTarget: true }
-    }
-
-    // 3) Any 关键词 → 混合
-    if (hasExplicitAny) {
-      return { targetMode: 'any' as TargetMode, hasTarget: true }
-    }
-
-    // 4) Enemy + Ally 混合 → 混合
-    if (hasExplicitEnemy && hasExplicitAlly) {
-      return { targetMode: 'any' as TargetMode, hasTarget: true }
-    }
-
-    // 5) 仅友方目标（可能含 Self）→ STRIKER
-    if (!hasExplicitEnemy && !hasExplicitAny && hasExplicitAlly) {
-      return { targetMode: 'striker' as TargetMode, hasTarget: true }
-    }
-
-    // 6) 纯敌方目标 → Boss
-    if (hasExplicitEnemy && !hasExplicitAlly && !hasExplicitSelf) {
-      return { targetMode: 'boss' as TargetMode, hasTarget: true }
-    }
-
-    // ── 以下为「无显式 Target」或「Self + Enemy 混合」的回退逻辑 ──
-
-    // 7) 纯伤害/Debuff/CC/Knockback → Boss
-    const onlyOffensive = effects.every((ef) =>
-      ef.Type === 'Damage' || ef.Type === 'CrowdControl' || ef.Type === 'Knockback' ||
-      ef.Type === 'DamageDebuff' || ef.Type === 'Debuff' || ef.Type === 'Accumulation' ||
-      ef.Type === 'ConcentratedTarget' ||
-      (ef.Type === 'Buff' && toArray(ef.Target).includes('Enemy'))
-    )
-    if (onlyOffensive) return { targetMode: 'boss' as TargetMode, hasTarget: true }
-
-    // 8) 纯友方 Buff/Heal/Shield/Regen/Dispel → STRIKER
-    const onlyAllySupport = effects.every((ef) =>
-      ef.Type === 'Buff' || ef.Type === 'Heal' || ef.Type === 'Shield' ||
-      ef.Type === 'Regen' || ef.Type === 'Dispel' ||
-      (ef.Type === 'Special' && toArray(ef.Target).includes('Ally'))
-    )
-    if (onlyAllySupport) return { targetMode: 'striker' as TargetMode, hasTarget: true }
-
-    // 9) 兜底 → Boss
-    return { targetMode: 'boss' as TargetMode, hasTarget: true }
-  }, [ex.Effects])
+  const targetPolicy = useMemo(
+    () => skillTargetPolicy(applyCostOverloadRule(student.Id, { kind: 'ex' }, ex.Effects)),
+    [ex.Effects, student.Id],
+  )
+  const isManualTarget = targetPolicy === 'select-ally' || targetPolicy === 'select-any'
 
   // targetId: null=未选择, -1=Boss, other=学生ID
-  const selected = !hasTarget || targetId !== null  // 无目标选择器时始终可选
-  const effectiveTargetId = (): number => {
-    if (!hasTarget) return student.Id   // 召唤类 → 自身
-    if (targetMode === 'boss') return -1
-    if (targetMode === 'self') return student.Id
-    return targetId ?? student.Id
+  const selected = !isManualTarget || targetIds.length > 0
+  const effectiveTargetIds = (): number[] => {
+    return isManualTarget ? targetIds : fixedSkillTargetIds(targetPolicy, student.Id)
   }
+  const targetOptions = useMemo<TargetOption[]>(() => {
+    const candidates = COST_OVERLOAD_RULES[student.Id]
+      ? squadStudents.filter(value => value.SquadType === 'Main')
+      : squadStudents
+    const allies = candidates.map(value => ({ id: value.Id, label: value.Name }))
+    return targetPolicy === 'select-any' ? [{ id: -1, label: t.event_log.target_boss }, ...allies] : allies
+  }, [squadStudents, student.Id, t.event_log.target_boss, targetPolicy])
 
   /* ── 工具：仅允许数字输入 ── */
   const digits = (v: string) => v.replace(/\D/g, '')
@@ -153,9 +81,14 @@ function toArray(v: string | string[] | undefined): string[] {
   const totalFrames = min * 1800 + sec * 30 + frame
 
   // ── Cost 充足性检测 ──
-  const skillCost = ex.Cost[exLevel - 1] * COST_SCALE
-  const availableCost = costAtFrame(costTimeline, totalFrames)
-  const hasEnoughCost = availableCost >= skillCost
+  const baseSkillCost = ex.Cost[exLevel - 1]
+  const effectiveSkillCost = effectiveSkillCostAtFrame(simulation, student.Id, totalFrames, baseSkillCost)
+  const skillCost = effectiveSkillCost * COST_SCALE
+  const availableCost = simulation?.costHistory[Math.max(0, Math.min(totalFrames, simulation.maxFrame))] ?? 0
+  const borrowLimit = costBorrowLimitAtFrame(simulation, student.Id, totalFrames)
+  const hasEnoughCost = canAffordSkillAtFrame(simulation, student.Id, totalFrames, skillCost)
+  const borrowedCost = hasEnoughCost ? Math.max(0, skillCost - availableCost) : 0
+  const formatCost = (value: number) => (value / COST_SCALE).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
 
   // ── 合法性检测：时间冲突 + Cost 充足 ──
   const isTimeValid = useMemo(() => {
@@ -191,9 +124,9 @@ function toArray(v: string | string[] | undefined): string[] {
     if (!canAct) return
     addSkillBlock(slotIndex, {
       type: 'ex', name: ex.Name, startFrame: totalFrames,
-      studentId: student.Id, targetId: effectiveTargetId(), targetIds: [effectiveTargetId()],
+      studentId: student.Id, targetId: effectiveTargetIds()[0] ?? student.Id, targetIds: effectiveTargetIds(),
       skillRef: { kind: 'ex' }, triggerSource: 'manual',
-      skillCost: ex.Cost[exLevel - 1], skillDuration: ex.Duration,
+      skillCost: baseSkillCost, skillDuration: ex.Duration,
     })
   }
 
@@ -207,8 +140,13 @@ function toArray(v: string | string[] | undefined): string[] {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="font-game text-base" style={{ color: 'var(--text-primary)' }}>
-            COST {ex.Cost[exLevel - 1]}
+            COST {baseSkillCost}
           </span>
+          {effectiveSkillCost !== baseSkillCost && (
+            <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-xs font-game text-cyan-300">
+              → {effectiveSkillCost}
+            </span>
+          )}
           <select
             value={exLevel}
             onChange={(e) => useSquadStore.getState().setSkillLevel(slotIndex, 'ex', Number(e.target.value))}
@@ -261,41 +199,14 @@ function toArray(v: string | string[] | undefined): string[] {
       </div>
 
       {/* 目标选择器 */}
-      {hasTarget ? (
+      {isManualTarget ? <TargetPicker options={targetOptions} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} multiple={!COST_OVERLOAD_RULES[student.Id]} /> : (
         <div className="flex items-center gap-2 text-xs">
           <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
-          <select
-            value={targetId ?? ''}
-            onChange={(e) => {
-              const v = e.target.value
-              if (v === '') { setTargetId(null); return }
-              setTargetId(parseInt(v))
-            }}
-            className="rounded px-1.5 py-0.5 max-w-[110px] truncate border"
-            style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
-          >
-            <option value="">{t.skill.target_none}</option>
-            {targetMode === 'self' && (
-              <option value={student.Id}>{t.skill.target_self}</option>
-            )}
-            {targetMode === 'boss' && (
-              <option value={-1}>{t.event_log.target_boss}</option>
-            )}
-            {targetMode === 'striker' &&
-              strikers.filter((s) => s.Id !== student.Id).map((s) => (
-                <option key={s.Id} value={s.Id}>{s.Name}</option>
-              ))
-            }
-          </select>
-        </div>
-      ) : targetMode === 'self' ? (
-        <div className="flex items-center gap-2 text-xs">
-          <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
-          <span className="font-game text-[11px] px-1.5 py-0.5 rounded" style={{ color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 10%, transparent)' }}>
-            {t.skill.target_self}
+          <span className="font-game text-[11px] px-1.5 py-0.5 rounded" style={{ color: targetPolicy === 'boss' ? '#fff' : 'var(--ok)', background: targetPolicy === 'boss' ? 'var(--danger)' : 'color-mix(in srgb, var(--ok) 10%, transparent)' }}>
+            {targetPolicy === 'self' ? t.skill.target_self : targetPolicy === 'boss' ? t.event_log.target_boss : targetPolicy === 'mixed' ? `${t.skill.target_self} / ${t.event_log.target_boss}` : '固定编队范围'}
           </span>
         </div>
-      ) : null}
+      )}
 
       {/* 底部操作栏 */}
       <div className="flex items-center gap-2 mt-3 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
@@ -305,7 +216,12 @@ function toArray(v: string | string[] | undefined): string[] {
         )}
         {isTimeValid && !hasEnoughCost && !isNaN(totalFrames) && (
           <span className="text-[11px] text-red-400">
-            {t.skill.cost_insufficient} ({skillCost}/{availableCost.toFixed(1)})
+            {t.skill.cost_insufficient} ({formatCost(skillCost)}/{formatCost(availableCost)} COST)
+          </span>
+        )}
+        {isTimeValid && borrowedCost > 0 && (
+          <span className="text-[11px] text-amber-300">
+            {t.skill.cost_overload} ({formatCost(borrowedCost)}/{borrowLimit} COST)
           </span>
         )}
         <div className="flex-1" />
@@ -314,7 +230,7 @@ function toArray(v: string | string[] | undefined): string[] {
           onDragStart={selected ? (e) => {
             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
               type: 'ex', name: ex.Name, startFrame: 0,
-              studentId: student.Id, targetId: effectiveTargetId(), targetIds: [effectiveTargetId()],
+              studentId: student.Id, targetId: effectiveTargetIds()[0] ?? student.Id, targetIds: effectiveTargetIds(),
               skillRef: { kind: 'ex' }, triggerSource: 'manual',
             }))
             e.dataTransfer.effectAllowed = 'copyMove'

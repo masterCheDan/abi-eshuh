@@ -3,6 +3,8 @@ import { useSquadStore } from '../../stores/useSquadStore'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import type { Student } from '../../types/student'
 import { useI18n, tpl } from '../../i18n'
+import { useSimulationStore } from '../../stores/useSimulationStore'
+import type { CardStateSnapshot } from '../../engine/model/types'
 
 export function CardOrderEditor() {
     const { t } = useI18n()
@@ -13,6 +15,7 @@ export function CardOrderEditor() {
     const setDeckOrder = useSquadStore((s) => s.setDeckOrder)
     const toggleDeckOrder = useSquadStore((s) => s.toggleDeckOrder)
     const mode = useSquadStore((s) => s.config.mode)
+    const runtimeWindow = useSimulationStore((s) => s.result?.window)
 
     const windowSize = mode === 'normal' ? 3 : 5
     const enabled = deckOrder !== null
@@ -136,6 +139,45 @@ export function CardOrderEditor() {
         )
     }
 
+    const renderRuntimeCard = (card: CardStateSnapshot, index: number) => {
+        const student = getStudentBySlot(card.slotIndex)
+        if (!student) return null
+        const copiedStudent = card.copiedFromSlot == null ? null : getStudentBySlot(card.copiedFromSlot)
+        const skillStudent = copiedStudent ?? student
+        const extra = card.skillRef.kind === 'extra_ex'
+            ? skillStudent.Skills.E.ExtraSkills?.find(skill => card.skillRef.kind === 'extra_ex' && (
+                card.skillRef.extraSkillId ? skill.Id === card.skillRef.extraSkillId : false
+            ))
+            : null
+        const title = [
+            `${index + 1}. ${student.Name}`,
+            extra?.Name,
+            copiedStudent ? `${t.card_order.copied}: ${copiedStudent.Name}` : null,
+            ...card.labels,
+        ].filter(Boolean).join(' · ')
+
+        return (
+            <div key={`${card.slotIndex}-${index}`} className="relative flex flex-col items-center gap-0.5" title={title}>
+                <div className="relative rounded-lg ring-1 ring-cyan-400/40 bg-cyan-400/5">
+                    <StudentAvatar student={student} size={36} />
+                    {card.pinned && (
+                        <span className="absolute -top-1.5 -left-1.5 rounded bg-amber-500 px-1 text-[7px] font-game text-slate-950">
+                            {t.card_order.pinned}
+                        </span>
+                    )}
+                    {copiedStudent && (
+                        <span className="absolute -right-1.5 -bottom-1.5 rounded-full ring-1 ring-cyan-300 bg-slate-900">
+                            <StudentAvatar student={copiedStudent} size={18} />
+                        </span>
+                    )}
+                </div>
+                <span className="max-w-12 truncate text-[8px]" style={{ color: 'var(--text-muted)' }}>
+                    {extra?.Name ?? card.labels[0] ?? index + 1}
+                </span>
+            </div>
+        )
+    }
+
     return (
         <div className="ba-panel ba-cut-panel p-3">
             {/* 标题栏 */}
@@ -199,6 +241,28 @@ export function CardOrderEditor() {
                                 <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
                                     {t.card_order.help}
                                 </p>
+                            )}
+
+                            {runtimeWindow && (
+                                <div className="mt-1 rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-alt)' }}>
+                                    <div className="mb-2 text-[9px] font-game tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                                        {t.card_order.result}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-12 shrink-0 text-[9px]" style={{ color: '#67e8f9' }}>{t.card_order.hand}</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {runtimeWindow.hand.map(renderRuntimeCard)}
+                                        </div>
+                                    </div>
+                                    {runtimeWindow.drawPile.length > 0 && (
+                                        <div className="mt-2 flex items-center gap-2 border-t pt-2" style={{ borderColor: 'var(--border-light)' }}>
+                                            <span className="w-12 shrink-0 text-[9px]" style={{ color: 'var(--text-muted)' }}>{t.card_order.draw_pile}</span>
+                                            <div className="flex flex-wrap gap-2 opacity-70">
+                                                {runtimeWindow.drawPile.map(renderRuntimeCard)}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}

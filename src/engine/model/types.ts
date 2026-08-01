@@ -22,6 +22,23 @@ export type SkillRef =
 /** 不确定条件的结论必须由用户显式录入，保证推演可复现。 */
 export type TriggerSource = 'automatic' | 'manual'
 
+/** 用户对无法从学生数据确定的战况所作出的可审计确认。 */
+export type ManualTriggerReason =
+  | 'chance'
+  | 'random_target'
+  | 'hp_threshold'
+  | 'external_state'
+  | 'action_event'
+  | 'interval'
+
+export interface TriggerEvidence {
+  source: TriggerSource
+  /** manual 时至少记录一个用户确认的事实；automatic 不需要。 */
+  reasons?: ManualTriggerReason[]
+  /** 条件型或 Duration=-1 效果由用户确认的失效帧。 */
+  conditionEndFrame?: number
+}
+
 export interface Intent {
   /** 唯一标识，支持增删改查 */
   id: string
@@ -39,6 +56,8 @@ export interface Intent {
   skillRef?: SkillRef
   /** automatic 仅用于具有结构化 TriggerSpec 的确定性技能。 */
   triggerSource?: TriggerSource
+  /** v3+ 的完整触发事实；缺失时由 triggerSource 迁移。 */
+  trigger?: TriggerEvidence
 }
 
 // ═══════════════════════════════════════════════════
@@ -67,6 +86,14 @@ export interface Formation {
   deckOrder?: number[]
   /** 各槽位 EX 技能等级 (1-5)，按 slotIndex 排列 */
   skillLevels?: number[]
+  /** 公共技能等级 (1-10)，按 slotIndex 排列。 */
+  publicSkillLevels?: number[]
+  /** 被动/额外被动等级 (1-10)，按 slotIndex 排列。 */
+  passiveSkillLevels?: number[]
+  /** 学生当前星级，按 slotIndex 排列。 */
+  starLevels?: number[]
+  /** 专武等级；0=未解锁，1-4=专武星级，按 slotIndex 排列。 */
+  uniqueWeaponLevels?: number[]
 }
 
 // ═══════════════════════════════════════════════════
@@ -110,13 +137,61 @@ export interface EffectAuditRecord {
   skillRef: SkillRef
   effectIndex: number
   effectType: string
-  action: 'scheduled' | 'applied' | 'expired' | 'consumed' | 'rejected'
+  action: 'scheduled' | 'applied' | 'expired' | 'used' | 'consumed' | 'rejected' | 'replaced' | 'dispelled' | 'ticked'
   detail?: string
+  /** Stable runtime effect instance, used to reconstruct its visible lifetime. */
+  effectId?: number
+  stat?: string
+  value?: number
+  /** CostChange interpretation. BaseAmount is additive; Coefficient uses 1/10000 units. */
+  valueType?: 'BaseAmount' | 'Coefficient'
+  /** Remaining/initial uses for an auditable CostChange instance. */
+  uses?: number
+  /** Natural end frame; omitted means active until removed or battle end. */
+  expiresAt?: number
+}
+
+export interface EffectLedgerEntry {
+  frame: number
+  issuerId: number
+  targetId: number
+  skillRef: SkillRef
+  effectType: 'Damage' | 'Heal' | 'Regen' | 'DamageDebuff'
+  /** 原始倍率/数值；不会在没有敌方数值模型时伪造最终 HP。 */
+  value: number
+  hits: number
+  detail?: string
+}
+
+export interface CardStateSnapshot {
+  /** Card owner in formation slot space; copied cards keep their owner. */
+  slotIndex: number
+  studentId: number
+  /** Current card face (base, transformed, fixed sequence, or copied source state). */
+  skillRef: SkillRef
+  copiedFromSlot?: number
+  pinned: boolean
+  /** Auditable compact state labels such as water/energy/rapid-fire count. */
+  labels: string[]
+}
+
+export interface CardOrderSnapshot {
+  /** Successful EX cards consumed; retained for v1 UI compatibility. */
+  left: number
+  size: number
+  /** Normalized complete initial deck (slotIndex[]). */
+  deck: number[]
+  /** Actual cards currently available. */
+  hand: CardStateSnapshot[]
+  /** Top-to-bottom draw queue. */
+  drawPile: CardStateSnapshot[]
 }
 
 export interface SimulationResult {
   /** 最大帧数 */
   maxFrame: number
+  /** 当前编队的 Cost 上限（已乘 COST_SCALE）。 */
+  maxCost: number
   /** 每帧 Cost 快照 (index = frame) */
   costHistory: number[]
   /** 纯逻辑动作记录 */
@@ -125,15 +200,10 @@ export interface SimulationResult {
   errors: SimulationError[]
   /** 学生技能效果的可审计执行记录。 */
   effectAudit: EffectAuditRecord[]
-  /** 滑动窗口信息 */
-  window?: {
-    /** 当前窗口左边界（已消费 card 数） */
-    left: number
-    /** 窗口大小 */
-    size: number
-    /** 完整队列 (slotIndex[]) */
-    deck: number[]
-  }
+  /** 伤害、治疗、持续效果的逐次账本。 */
+  effectLedger: EffectLedgerEntry[]
+  /** Deterministic hand and draw-pile state. */
+  window?: CardOrderSnapshot
   /** slotIndex → 可恢复的运行时状态 (用于增量推演) */
   finalRuntimes: Map<number, StudentRuntimeState>
 }
@@ -172,6 +242,8 @@ export interface StudentRuntimeState {
   specialStacks: Record<string, number>
   /** 当前护盾值（仅学生技能层面，不引入 Boss 数值）。 */
   shield: number
+  /** 当前召唤物数量（按 SummonId 计数）。 */
+  summons: Record<string, number>
 }
 
 // ═══════════════════════════════════════════════════
@@ -232,5 +304,20 @@ export interface ShareCodePayloadV2 {
   form: (number | null)[]
   init?: number[]
   events: ShareCodeEventV2[]
+  cfg?: { override: CalibrationEntry[] }
+}
+
+export interface ShareCodeEventV3 extends ShareCodeEventV2 {
+  trigger: TriggerEvidence
+}
+
+export interface ShareCodePayloadV3 {
+  ver: '3.0.0'
+  env: [number, number, number, number]
+  form: (number | null)[]
+  init?: number[]
+  events: ShareCodeEventV3[]
+  /** [星级, 专武等级]，按 slotIndex 对齐；旧 v3 分享码可省略。 */
+  ranks?: Array<[number, number] | null>
   cfg?: { override: CalibrationEntry[] }
 }

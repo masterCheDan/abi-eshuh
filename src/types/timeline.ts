@@ -1,5 +1,5 @@
 import type { Student } from './student'
-import type { SkillRef, TriggerSource } from '../engine/model/types'
+import type { SkillRef, TriggerSource, TriggerEvidence } from '../engine/model/types'
 
 /** 时间轴上的一个技能块（仅记录事实，不包含推导数据） */
 export interface SkillBlock {
@@ -19,6 +19,8 @@ export interface SkillBlock {
   skillRef?: SkillRef
   /** 手动触发代表用户已确认概率/阈值等外部条件成立。 */
   triggerSource?: TriggerSource
+  /** v3 手动事实；未填写时按 triggerSource 兼容迁移。 */
+  trigger?: TriggerEvidence
   /**
    * 实际 COST 消耗（可选）。
    * ExtraSkills（形态切换后的后续技能）Cost 为 0。

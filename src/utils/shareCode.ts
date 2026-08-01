@@ -8,9 +8,11 @@
  */
 
 import type { StudentLane } from '../types/timeline'
+import type { SquadSlot } from '../types/squad'
 import * as v001 from './shareCode/v001'
 import * as v1 from './shareCode/v1'
 import * as v2 from './shareCode/v2'
+import * as v3 from './shareCode/v3'
 
 /* ══════════════════════════════════════════════════════
    版本注册表
@@ -26,6 +28,7 @@ export type { ImportData, ImportEvent } from './shareCode/v001'
 /** v1.0.0 导入数据结构 */
 export type { ImportDataV1 } from './shareCode/v1'
 export type { ImportDataV2, ImportEventV2 } from './shareCode/v2'
+export type { ImportDataV3, ImportEventV3 } from './shareCode/v3'
 
 interface CodecEntry {
   version: string
@@ -39,9 +42,10 @@ const CODECS: Record<string, CodecEntry> = {
   [v001.VERSION]: { version: v001.VERSION, encode: v001.encode as (...args: unknown[]) => string, decode: v001.decode as (raw: string) => unknown },
   [v1.VERSION]: { version: v1.VERSION, encode: v1.encode as (...args: unknown[]) => string, decode: v1.decode as (raw: string) => unknown, isJson: true },
   [v2.VERSION]: { version: v2.VERSION, encode: v2.encode as (...args: unknown[]) => string, decode: v2.decode as (raw: string) => unknown, isJson: true },
+  [v3.VERSION]: { version: v3.VERSION, encode: v3.encode as (...args: unknown[]) => string, decode: v3.decode as (raw: string) => unknown, isJson: true },
 }
 
-const CURRENT_VERSION = v2.VERSION
+const CURRENT_VERSION = v3.VERSION
 
 /* ══════════════════════════════════════════════════════
    公开 API
@@ -61,11 +65,13 @@ export function encodeShareCode(
   difficulty = 5,
   armorType = 'LightArmor',
   terrain = 0,
+  deckOrder?: number[],
+  squadSlots?: SquadSlot[],
 ): ShareCodeResult {
   const codec = CODECS[CURRENT_VERSION]
   if (!codec) throw new Error(`Unknown version: ${CURRENT_VERSION}`)
 
-  const raw = codec.encode(lanes, bossId, difficulty, armorType, terrain)
+  const raw = codec.encode(lanes, bossId, difficulty, armorType, terrain, deckOrder, squadSlots)
   const bytes = new TextEncoder().encode(raw)
   const binary = String.fromCharCode(...bytes)
   return { version: CURRENT_VERSION, code: btoa(binary) }

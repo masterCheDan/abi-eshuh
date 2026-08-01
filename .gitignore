@@ -48,4 +48,5 @@ Thumbs.db
 *.tsbuildinfo
 .eslintcache
 .cache/
+.pnpm-store/
 *.orig

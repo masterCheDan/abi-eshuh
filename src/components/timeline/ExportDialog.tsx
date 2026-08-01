@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
+import { useSquadStore } from '../../stores/useSquadStore'
 import { useI18n } from '../../i18n'
 import { exportNaturalLanguage, exportCostBased, encodeShareCode } from '../../utils/planExport'
 
@@ -12,6 +13,8 @@ type ExportMode = 'natural' | 'natural_cost' | 'share'
 export function ExportDialog({ onClose }: ExportDialogProps) {
   const { t } = useI18n()
   const lanes = useTimelineStore((s) => s.lanes)
+  const squadSlots = useSquadStore((s) => s.config.slots)
+  const deckOrder = useSquadStore((s) => s.deckOrder)
   const overlayRef = useRef<HTMLDivElement>(null)
   const [mode, setMode] = useState<ExportMode>('natural')
 
@@ -30,9 +33,9 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
   const text = useMemo(() => {
     if (mode === 'natural') return exportNaturalLanguage(lanes)
     if (mode === 'natural_cost') return exportCostBased(lanes)
-    const result = encodeShareCode(lanes)
+    const result = encodeShareCode(lanes, 0, 5, 'LightArmor', 0, deckOrder ?? undefined, squadSlots)
     return result.code
-  }, [mode, lanes])
+  }, [mode, lanes, deckOrder, squadSlots])
 
   const handleCopy = () => {
     if (text) navigator.clipboard.writeText(text)

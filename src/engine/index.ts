@@ -17,6 +17,8 @@ export type {
   SimulationError,
   SimulationResult,
   EffectAuditRecord,
+  CardStateSnapshot,
+  CardOrderSnapshot,
   StudentRuntimeState,
   CalibrationEntry,
   TimelineBlock,
@@ -44,8 +46,17 @@ export {
 export type { NsTriggerContext, NsTriggerResult } from './system/triggerScheduler'
 
 // Cost System
-export { computeCostTimeline, costAtFrame, COST_SCALE } from './system/costSystem'
+export {
+  computeCostTimeline,
+  costAtFrame,
+  COST_SCALE,
+  baseMaxCost,
+  formationMaxCost,
+  UNIQUE_WEAPON_4_SUPPORT_MAX_COST_BONUS,
+} from './system/costSystem'
 export type { CostFrame } from './system/costSystem'
+export { applyCostModifier, costModifierAtFrame, effectiveCostAtFrame } from './system/costModifier'
+export type { CostModifier, CostChangeValueType } from './system/costModifier'
 
 // Simulation Engine
 export { SimulationEngine } from './core/simulationEngine'

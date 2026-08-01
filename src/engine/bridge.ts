@@ -36,6 +36,7 @@ export function lanesToIntents(lanes: StudentLane[]): Intent[] {
         priority: skillRef.kind === 'ex' || skillRef.kind === 'extra_ex' ? PRIORITY.EX_CAST : skillRef.kind === 'public' || skillRef.kind === 'gear_public' ? PRIORITY.NS_TRIGGER : PRIORITY.SS_TRIGGER,
         skillRef,
         triggerSource: skill.triggerSource ?? 'manual',
+        trigger: skill.trigger ?? { source: skill.triggerSource ?? 'manual' },
       })
     }
   }
@@ -65,6 +66,10 @@ export function buildFormation(
     slots: sorted.map(l => l.student?.Id ?? null),
     deckOrder: deckOrder && deckOrder.length > 0 ? deckOrder : undefined,
     skillLevels: sorted.map(l => slots[l.slotIndex]?.exLevel ?? 5),
+    publicSkillLevels: sorted.map(l => slots[l.slotIndex]?.nsLevel ?? 10),
+    passiveSkillLevels: sorted.map(l => slots[l.slotIndex]?.ssLevel ?? 10),
+    starLevels: sorted.map(l => slots[l.slotIndex]?.starLevel ?? l.student?.StarGrade ?? 0),
+    uniqueWeaponLevels: sorted.map(l => slots[l.slotIndex]?.uniqueWeaponLevel ?? 0),
   }
 }
 

@@ -20,10 +20,22 @@ export function SquadSlotComponent({ slotIndex }: SquadSlotProps) {
     () => allSlots.filter((s) => s.student).map((s) => s.student!.Id),
     [allSlots]
   )
+  const dialogTitle = slot.slotType === 'Main'
+    ? tpl(t.squad.select_front, { label: slot.label })
+    : tpl(t.squad.select_back, { label: slot.label })
 
   if (slot.student && slot.locked) {
     return (
-      <div className="relative rounded p-2 border group" style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}>
+      <>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setShowDialog(true)}
+        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setShowDialog(true) }}
+        className="relative rounded p-2 border group cursor-pointer hover:brightness-110 transition-all"
+        style={{ background: 'var(--bg-surface-alt)', borderColor: 'var(--border)' }}
+        title="点击更换学生"
+      >
         <div className="flex items-center gap-2">
           <StudentAvatar student={slot.student} size={28} />
           <div className="min-w-0">
@@ -31,21 +43,33 @@ export function SquadSlotComponent({ slotIndex }: SquadSlotProps) {
             <div className="text-[10px] truncate font-game" style={{ color: 'var(--text-muted)' }}>
               {slot.student.Position} · {slot.student.BulletType} · {slot.student.ArmorType}
             </div>
+            <div className="flex items-center gap-1.5 text-[9px] leading-none mt-1">
+              <span style={{ color: '#fbbf24' }}>{'★'.repeat(slot.starLevel)}</span>
+              {slot.uniqueWeaponLevel > 0 && (
+                <span style={{ color: '#38bdf8' }}>专武{slot.uniqueWeaponLevel}</span>
+              )}
+            </div>
           </div>
         </div>
         <button
-          onClick={() => removeStudent(slot.index)}
+          onClick={(event) => { event.stopPropagation(); removeStudent(slot.index) }}
           className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full items-center justify-center text-[10px] text-white"
         >
           ×
         </button>
       </div>
+      {showDialog && (
+        <StudentSelectDialog
+          title={dialogTitle}
+          squadType={slot.slotType}
+          excludeIds={assignedIds.filter(id => id !== slot.student?.Id)}
+          onSelect={(student) => assignStudent(slot.index, student)}
+          onClose={() => setShowDialog(false)}
+        />
+      )}
+      </>
     )
   }
-
-  const dialogTitle = slot.slotType === 'Main'
-    ? tpl(t.squad.select_front, { label: slot.label })
-    : tpl(t.squad.select_back, { label: slot.label })
 
   return (
     <>

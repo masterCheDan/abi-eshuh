@@ -57,6 +57,7 @@ export interface LanguagePack {
     terrain_adapt: string
     time_conflict: string
     cost_insufficient: string
+    cost_overload: string
     form_change: string
     parent_triggered: string
   }
@@ -121,6 +122,11 @@ export interface LanguagePack {
     empty_hint: string
     help: string
     free: string
+    result: string
+    hand: string
+    draw_pile: string
+    pinned: string
+    copied: string
   }
   terrain: {
     Street: string
@@ -209,6 +215,7 @@ export const zh: LanguagePack = {
     terrain_adapt: '{terrain}适性',
     time_conflict: '时间冲突',
     cost_insufficient: 'COST不足',
+    cost_overload: '欠费施放',
     form_change: '形态切换',
     parent_triggered: '⚡ 由父技能触发，无需手动释放',
   },
@@ -273,6 +280,11 @@ export const zh: LanguagePack = {
     empty_hint: '牌序为空，点击下方自由学生添加到牌序中。',
     help: '点击两张卡交换位置 · 悬停卡可 × 移除 · 点击 FREE 学生添加',
     free: 'FREE',
+    result: '推演结束牌面',
+    hand: '手牌',
+    draw_pile: '后续牌序',
+    pinned: '固定',
+    copied: '复制',
   },
   terrain: {
     Street: '街道战',

@@ -2,12 +2,26 @@ import { create } from 'zustand'
 import type { Student } from '../types/student'
 import type { SquadConfig, SquadSlot, SquadMode } from '../types/squad'
 import { useTimelineStore } from './useTimelineStore'
+import {
+  defaultStudentRank,
+  normalizeStudentRank,
+  withStarLevel,
+  withUniqueWeaponLevel,
+} from '../utils/studentRank'
 
 const LS_KEY = 'abi-squad'
 
 interface SquadSnapshot {
   mode: SquadMode
-  slots: { index: number; studentId: number; exLevel: number; nsLevel: number; ssLevel: number }[]
+  slots: {
+    index: number
+    studentId: number
+    exLevel: number
+    nsLevel: number
+    ssLevel: number
+    starLevel?: number
+    uniqueWeaponLevel?: number
+  }[]
 }
 
 function loadSnapshot(): SquadSnapshot | null {
@@ -27,6 +41,8 @@ function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
       exLevel: s.exLevel,
       nsLevel: s.nsLevel,
       ssLevel: s.ssLevel,
+      starLevel: s.starLevel,
+      uniqueWeaponLevel: s.uniqueWeaponLevel,
     })),
   }
   localStorage.setItem(LS_KEY, JSON.stringify(data))
@@ -36,10 +52,10 @@ function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
 function createNormalSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
   }
   for (let i = 0; i < 2; i++) {
-    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
+    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
   }
   return slots
 }
@@ -48,10 +64,10 @@ function createNormalSlots(): SquadSlot[] {
 function createTotalAssaultSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 6; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
   }
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10 })
+    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
   }
   return slots
 }
@@ -86,6 +102,10 @@ interface SquadStore {
   removeStudent: (slotIndex: number) => void
   /** 设置某位置的技能等级 */
   setSkillLevel: (slotIndex: number, skill: 'ex' | 'ns' | 'ss', level: number) => void
+  /** 设置某位置的养成星级 */
+  setStarLevel: (slotIndex: number, level: number) => void
+  /** 设置某位置的专武等级（0=未解锁） */
+  setUniqueWeaponLevel: (slotIndex: number, level: number) => void
   /** 检查某个位置是否可用 */
   isSlotAvailable: (slotIndex: number) => boolean
   /** 获取空余的前排位置数 */
@@ -128,6 +148,38 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
       return { config: { ...state.config, slots: newSlots } }
     }),
 
+  setStarLevel: (slotIndex, level) =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        slots: state.config.slots.map((slot) => {
+          if (slot.index !== slotIndex || !slot.student) return slot
+          const rank = withStarLevel(
+            slot.student.StarGrade,
+            { starLevel: slot.starLevel, uniqueWeaponLevel: slot.uniqueWeaponLevel },
+            level,
+          )
+          return { ...slot, ...rank }
+        }),
+      },
+    })),
+
+  setUniqueWeaponLevel: (slotIndex, level) =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        slots: state.config.slots.map((slot) => {
+          if (slot.index !== slotIndex || !slot.student) return slot
+          const rank = withUniqueWeaponLevel(
+            slot.student.StarGrade,
+            { starLevel: slot.starLevel, uniqueWeaponLevel: slot.uniqueWeaponLevel },
+            level,
+          )
+          return { ...slot, ...rank }
+        }),
+      },
+    })),
+
   restoreFromStorage: (getStudent) => {
     const snap = loadSnapshot()
     if (!snap) return
@@ -135,13 +187,15 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
     if (snap.mode !== currentMode) {
       get().setMode(snap.mode)
     }
-    for (const { index, studentId, exLevel, nsLevel, ssLevel } of snap.slots) {
+    for (const { index, studentId, exLevel, nsLevel, ssLevel, starLevel, uniqueWeaponLevel } of snap.slots) {
       const student = getStudent(studentId)
       if (student) {
         get().assignStudent(index, student)
         get().setSkillLevel(index, 'ex', exLevel ?? 5)
         get().setSkillLevel(index, 'ns', nsLevel ?? 10)
         get().setSkillLevel(index, 'ss', ssLevel ?? 10)
+        get().setStarLevel(index, starLevel ?? student.StarGrade)
+        get().setUniqueWeaponLevel(index, uniqueWeaponLevel ?? 0)
       }
     }
   },
@@ -157,12 +211,16 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
   assignStudent: (slotIndex, student) =>
     set((state) => {
       const slot = state.config.slots[slotIndex]
-      if (!slot || slot.locked) return state
+      if (!slot) return state
 
       const newSlots = state.config.slots.map((s) =>
-        s.index === slotIndex
-          ? { ...s, student, locked: true }
-          : s
+        {
+          if (s.index !== slotIndex) return s
+          const rank = s.student?.Id === student.Id
+            ? normalizeStudentRank(student.StarGrade, s.starLevel, s.uniqueWeaponLevel)
+            : defaultStudentRank(student.StarGrade)
+          return { ...s, student, locked: true, ...rank }
+        }
       )
 
       // 同步分配到时间轴对应 slot
@@ -183,7 +241,7 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
 
       const newSlots = state.config.slots.map((s) =>
         s.index === slotIndex
-          ? { ...s, student: null, locked: false }
+          ? { ...s, student: null, locked: false, starLevel: 0, uniqueWeaponLevel: 0 }
           : s
       )
 
@@ -213,7 +271,18 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
 
   replaceAllSlots: (slots) =>
     set((state) => ({
-      config: { ...state.config, slots },
+      config: {
+        ...state.config,
+        slots: slots.map((slot) => {
+          if (!slot.student) return { ...slot, starLevel: 0, uniqueWeaponLevel: 0 }
+          const rank = normalizeStudentRank(
+            slot.student.StarGrade,
+            slot.starLevel,
+            slot.uniqueWeaponLevel,
+          )
+          return { ...slot, ...rank }
+        }),
+      },
     })),
 }))
 

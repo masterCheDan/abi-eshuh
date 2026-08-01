@@ -32,10 +32,15 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
     const lanes = useTimelineStore((s) => s.lanes)
     const mode = useSquadStore((s) => s.config.mode)
     const result = useSimulationStore((s) => s.result)
-    const maxCost = mode === 'normal' ? 10 : 20
+    const maxCost = (result?.maxCost ?? (mode === 'normal' ? 10 : 20) * COST_SCALE) / COST_SCALE
     const [hoverInfo, setHoverInfo] = useState<{ frame: number; cost: number; x: number } | null>(null)
 
     const timeline = useMemo(() => result?.costHistory.map((cost, frame) => ({ frame, cost })) ?? [], [result])
+    const minCost = useMemo(() => Math.min(
+        0,
+        Math.floor(Math.min(0, ...timeline.map(point => point.cost / COST_SCALE))),
+    ), [timeline])
+    const costRange = Math.max(1, maxCost - minCost)
 
     const points = useMemo(() => {
         if (timeline.length === 0) return ''
@@ -43,17 +48,17 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
         return timeline
             .map((p) => {
                 const x = p.frame * pxPerFrame
-                const y = PADDING_Y + chartH - (p.cost / COST_SCALE / maxCost) * chartH
+                const y = PADDING_Y + ((maxCost - p.cost / COST_SCALE) / costRange) * chartH
                 return `${x},${y.toFixed(1)}`
             })
             .join(' ')
-    }, [timeline, pxPerFrame, maxCost])
+    }, [timeline, pxPerFrame, maxCost, costRange])
 
     const costLabels = useMemo(() => {
-        const labels: number[] = []
-        for (let c = 0; c <= maxCost; c += 2) labels.push(c)
-        return labels
-    }, [maxCost])
+        const labels = new Set<number>([minCost, 0, maxCost])
+        for (let c = Math.ceil(minCost / 2) * 2; c <= maxCost; c += 2) labels.add(c)
+        return [...labels].sort((left, right) => left - right)
+    }, [maxCost, minCost])
 
     const handleMouseMove = (e: React.MouseEvent) => {
         const rect = e.currentTarget.getBoundingClientRect()
@@ -80,8 +85,11 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
 
     return (
         <div className="flex border-b shrink-0" style={{ height: HEIGHT, borderColor: 'var(--border-light)' }}>
-            <div className="sticky left-0 z-10 flex items-center justify-center px-2 border-r shrink-0 w-20" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
+            <div className="sticky left-0 z-10 flex flex-col items-center justify-center px-2 border-r shrink-0 w-20" style={{ background: 'var(--bg-app)', borderColor: 'var(--border)' }}>
                 <span className="text-xs font-game text-gray-300 uppercase">Cost</span>
+                <span className="mt-1 text-[9px] font-game" style={{ color: 'var(--cost)' }}>
+                    上限 {Number.isInteger(maxCost) ? maxCost : maxCost.toFixed(1)}
+                </span>
             </div>
 
             <div
@@ -90,16 +98,26 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
             >
+                {minCost < 0 && (
+                    <div
+                        className="absolute left-0 right-0 pointer-events-none"
+                        style={{
+                            top: PADDING_Y + ((maxCost - 0) / costRange) * (HEIGHT - PADDING_Y * 2),
+                            bottom: PADDING_Y,
+                            background: 'rgba(251,191,36,0.055)',
+                        }}
+                    />
+                )}
                 {costLabels.map((c) => {
                     const chartH = HEIGHT - PADDING_Y * 2
-                    const y = PADDING_Y + chartH - (c / maxCost) * chartH
+                    const y = PADDING_Y + ((maxCost - c) / costRange) * chartH
                     return (
                         <div key={c} className="absolute left-0 right-0 flex items-center" style={{ top: y }}>
                             {/* 横向虚线 — Cost阈值 */}
                             <div className="absolute left-0 right-0" style={{
                                 top: 0,
                                 borderTop: '1px dashed',
-                                borderColor: c === 0 ? 'transparent' : 'var(--cost-soft)',
+                                borderColor: c === 0 ? 'rgba(251,191,36,0.55)' : 'var(--cost-soft)',
                             }} />
                             <span className="absolute left-1 text-[10px] text-gray-500 font-game">{c}</span>
                         </div>
@@ -114,7 +132,7 @@ export function CostTrack({ pxPerFrame, totalWidth }: CostTrackProps) {
                 }).map((p, i) => {
                     const chartH = HEIGHT - PADDING_Y * 2
                     const x = p.frame * pxPerFrame
-                    const y = PADDING_Y + chartH - (p.cost / COST_SCALE / maxCost) * chartH
+                    const y = PADDING_Y + ((maxCost - p.cost / COST_SCALE) / costRange) * chartH
                     return (
                         <div
                             key={`regen-${i}`}
