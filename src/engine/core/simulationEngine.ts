@@ -183,7 +183,7 @@ export class SimulationEngine {
       this.updateCC(runtimes, frame)
       this.tickAllFSM(runtimes, frame)
       const costBeforeRegen = availableCost
-      availableCost = Math.min(maxCost, availableCost + baseRegen + effects.getRegenDelta())
+      availableCost = Math.min(maxCost, availableCost + baseRegen + effects.getRegenDelta(baseRegen))
       if (costBeforeRegen < 0 && availableCost >= 0 && debtSource) {
         effects.recordCostDebtRepaid(debtSource.studentId, debtSource.skillRef, frame)
         debtSource = null

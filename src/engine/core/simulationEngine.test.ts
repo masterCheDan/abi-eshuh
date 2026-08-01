@@ -267,4 +267,29 @@ describe('SimulationEngine deterministic student skills', () => {
     expect(result.errors).toHaveLength(0)
     expect(result.effectLedger.find(entry => entry.effectType === 'Damage')?.targetId).toBe(-1)
   })
+
+  it('applies RegenCost_Coefficient as a 1/10000 multiplier, not a flat add', () => {
+    // 日鞠类效果：目标为全体成员，系数 2000 → +20% 回复力（而非每成员 +2000 平面累加）
+    const unit = student(1, {
+      epEffects: [{ Type: 'Buff', Target: 'Self', Stat: 'RegenCost_Coefficient', Value: [[2000]], Duration: 5400 }],
+    })
+    const result = engine([unit]).simulate([
+      { id: 'ep', frame: 0, type: 'SS_TRIGGER', issuerId: 1, targetIds: [1], priority: 2, skillRef: { kind: 'extra_passive' }, triggerSource: 'manual', trigger: { source: 'manual', reasons: ['external_state'] } },
+    ])
+    // 单人队 baseRegen=700，系数 2000 → 每帧回复 700×(1+2000/10000)=840
+    // buff 在 frame 0 调度、frame 1 起生效，故首帧仅 baseRegen=700
+    expect(result.costHistory[100]).toBe(700 + 840 * 100)
+  })
+
+  it('deduplicates a team-wide RegenCost_Coefficient buff instead of summing per target', () => {
+    const striker = student(1)
+    const support = student(2)
+    support.SquadType = 'Support'
+    striker.Skills.EP.Effects = [{ Type: 'Buff', Target: ['Self', 'AllyMain', 'AllySupport'], Stat: 'RegenCost_Coefficient', Value: [[2000]], Duration: 5400 }]
+    const result = engine([striker, support]).simulate([
+      { id: 'ep', frame: 0, type: 'SS_TRIGGER', issuerId: 1, targetIds: [1, 2], priority: 2, skillRef: { kind: 'extra_passive' }, triggerSource: 'manual', trigger: { source: 'manual', reasons: ['external_state'] } },
+    ])
+    // 双人队 baseRegen=1400，系数 2000 只计一次 → 每帧 1400×1.2=1680（若按 target 累加则为 1400+2000×2=5400）
+    expect(result.costHistory[50]).toBe(1400 + 1680 * 50)
+  })
 })

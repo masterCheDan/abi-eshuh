@@ -189,8 +189,29 @@ export class StudentEffectSystem {
       }
     }
   }
-  getRegenDelta(): number {
-    return this.active.filter(a => a.effect.Type === 'Buff' && (a.effect.Stat === 'RegenCost_Base' || a.effect.Stat === 'RegenCost_Coefficient')).reduce((sum, a) => sum + a.amount * a.stacks, 0)
+  /**
+   * 当前帧的 Cost 回复加成（叠加在引擎 baseRegen 之上）。
+   * - RegenCost_Base：平面加值，每个受影响成员各计一次。
+   * - RegenCost_Coefficient：1/10000 单位（如 costModifier），作用于全队回复力，
+   *   按 (sourceId, key) 去重，避免全员目标 buff 被重复累加。
+   */
+  getRegenDelta(baseRegen: number): number {
+    let flat = 0
+    let coefficient = 0
+    const seen = new Set<string>()
+    for (const a of this.active) {
+      if (a.effect.Type !== 'Buff') continue
+      const stat = a.effect.Stat
+      if (stat === 'RegenCost_Base') {
+        flat += a.amount * a.stacks
+      } else if (stat === 'RegenCost_Coefficient') {
+        const key = `${a.sourceId}:${a.key}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        coefficient += a.amount * a.stacks
+      }
+    }
+    return flat + (baseRegen + flat) * coefficient / 10000
   }
 
   validate(intent: Intent, skill: ResolvedSkill, runtimes: Map<number, StudentRuntimeState>, allowExtraEx = false): string | null {

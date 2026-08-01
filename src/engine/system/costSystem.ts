@@ -59,7 +59,9 @@ export function collectCostChanges(student: Student): RegChange[] {
     start: number,
   ) => {
     for (const ef of effects) {
-      if (ef.Type !== 'Buff' || (ef.Stat !== 'RegenCost_Base' && ef.Stat !== 'RegenCost_Coefficient')) continue
+      // RegenCost_Coefficient 是全队百分比（1/10000），此处无团队 baseRegen 上下文，
+      // 仅 RegenCost_Base 作为平面加值进入 legacy 路径；Coefficient 由 StudentEffectSystem 处理。
+      if (ef.Type !== 'Buff' || ef.Stat !== 'RegenCost_Base') continue
       const af = ef.ApplyFrame ?? applyFrame
       const values = ef.Value?.[0] ?? ef.Scale ?? []
       const amount = values[values.length - 1] ?? 0
