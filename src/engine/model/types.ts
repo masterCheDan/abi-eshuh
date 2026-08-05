@@ -50,6 +50,8 @@ export interface Intent {
   issuerId: number
   /** 目标学生 ID 列表；-1 = Boss */
   targetIds: number[]
+  /** 已在场的召唤物实例 ID。与 targetIds 分开保存以兼容旧分享码。 */
+  targetSummonIds?: string[]
   /** 优先级 (CC > User_EX > System_NS) */
   priority: number
   /** 具体技能；旧轴码省略时按 type 推导。 */
@@ -133,7 +135,7 @@ export interface SimulationError {
 export interface EffectAuditRecord {
   frame: number
   issuerId: number
-  targetIds: number[]
+  targetIds: Array<number | string>
   skillRef: SkillRef
   effectIndex: number
   effectType: string
@@ -149,18 +151,40 @@ export interface EffectAuditRecord {
   uses?: number
   /** Natural end frame; omitted means active until removed or battle end. */
   expiresAt?: number
+  /** 召唤物的稳定身份；用于在任意帧还原可选目标。 */
+  summon?: Pick<SummonInstance, 'instanceId' | 'summonId' | 'kind' | 'ownerId' | 'spawnFrame' | 'spawnIndex' | 'expiresAt'>
 }
 
 export interface EffectLedgerEntry {
   frame: number
   issuerId: number
-  targetId: number
+  targetId: number | string
   skillRef: SkillRef
   effectType: 'Damage' | 'Heal' | 'Regen' | 'DamageDebuff'
   /** 原始倍率/数值；不会在没有敌方数值模型时伪造最终 HP。 */
   value: number
   hits: number
   detail?: string
+}
+
+/** 学生技能产生的召唤物类别。 */
+export type SummonKind = 'vehicle' | 'cover' | 'summoned'
+
+/** 独立的召唤物实例；同一实例可拥有多条 HP/ATK/HEAL 属性记录。 */
+export interface SummonInstance {
+  instanceId: string
+  summonId: number
+  kind: SummonKind
+  ownerId: number
+  sourceEventId: string
+  sourceSkillRef: SkillRef
+  spawnFrame: number
+  /** 同一源事件生成的实例序号，从 0 开始。 */
+  spawnIndex: number
+  expiresAt?: number
+  /** 来自所有同组 Summon Effect 的属性快照。 */
+  stats: Record<string, number>
+  active: boolean
 }
 
 export interface CardStateSnapshot {
@@ -206,6 +230,8 @@ export interface SimulationResult {
   window?: CardOrderSnapshot
   /** slotIndex → 可恢复的运行时状态 (用于增量推演) */
   finalRuntimes: Map<number, StudentRuntimeState>
+  /** 推演结束时仍在场的召唤物实例。 */
+  finalSummons: SummonInstance[]
 }
 
 // ═══════════════════════════════════════════════════

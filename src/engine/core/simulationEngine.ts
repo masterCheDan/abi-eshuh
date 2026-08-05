@@ -295,6 +295,7 @@ export class SimulationEngine {
       effectLedger: effects.ledger,
       window: cards.snapshot(),
       finalRuntimes: runtimes,
+      finalSummons: effects.snapshotSummons(),
     }
   }
 
@@ -440,6 +441,7 @@ export class SimulationEngine {
       effectLedger: [],
       window: windowInfo,
       finalRuntimes: runtimes,
+      finalSummons: [],
     }
   }
 

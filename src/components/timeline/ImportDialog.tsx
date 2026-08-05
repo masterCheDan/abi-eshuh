@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { useBossStore } from '../../stores/useBossStore'
 import { useStudentStore } from '../../stores/useStudentStore'
 import { useI18n } from '../../i18n'
 import { decodeShareCode } from '../../utils/planExport'
@@ -10,7 +11,7 @@ import type { SkillRef, TriggerSource, TriggerEvidence } from '../../engine/mode
 
 type CompatibleImport = {
   studentIds: number[]
-  skills: Array<{ frame: number; casterSlot: number; targetSlot?: number; targetSlots?: number[]; skillRef?: SkillRef; triggerSource?: TriggerSource; trigger?: TriggerEvidence }>
+  skills: Array<{ frame: number; eventId?: string; casterSlot: number; targetSlot?: number; targetSlots?: number[]; targetSummonIds?: string[]; skillRef?: SkillRef; triggerSource?: TriggerSource; trigger?: TriggerEvidence; skillCost?: number; skillDuration?: number; overrideOffset?: number }>
   ranks?: Array<[number, number] | null>
 }
 
@@ -67,7 +68,10 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
       return
     }
 
-    const data = result.data as ImportData & CompatibleImport
+    const data = result.data as ImportData & CompatibleImport & {
+      env?: { bossId: number; difficulty: number; armorType: string; terrain: number }
+      deckOrder?: number[]
+    }
     const { studentIds, skills } = data
 
     // ── 1. 建立新的 SquadSlot 数组 + TimeLane 数组 ──
@@ -119,9 +123,14 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
         type: blockType(ref),
         name: skillName(lane.student, ref),
         startFrame: ev.frame,
+        eventId: ev.eventId,
         studentId: lane.student.Id,
         targetId: targetIds[0] ?? lane.student.Id,
         targetIds,
+        targetSummonIds: ev.targetSummonIds,
+        skillCost: ev.skillCost,
+        skillDuration: ev.skillDuration,
+        overrideOffset: ev.overrideOffset,
         skillRef: ref,
         triggerSource: ev.triggerSource ?? 'manual',
         trigger: ev.trigger ?? { source: ev.triggerSource ?? 'manual' },
@@ -130,6 +139,15 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
 
     // ── 3. 替换 SquadStore + TimelineStore ──
     useSquadStore.getState().replaceAllSlots(squadSlots)
+    useSquadStore.getState().setDeckOrder(data.deckOrder?.length ? data.deckOrder : [])
+    if (data.env) {
+      const bossStore = useBossStore.getState()
+      bossStore.selectBoss(data.env.bossId)
+      bossStore.selectDifficulty(data.env.difficulty)
+      bossStore.selectArmorType(data.env.armorType as import('../../types/boss').BossArmorType)
+      const terrains = ['Street', 'Outdoor', 'Indoor'] as const
+      bossStore.selectTerrain(terrains[data.env.terrain] ?? 'Street')
+    }
     replaceAllLanes(newLanes)
     onClose()
   }

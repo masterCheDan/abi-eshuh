@@ -1,14 +1,17 @@
 /** Deterministic student-effect runtime. External battle facts are never inferred. */
 import type { SkillEffect, Student } from '../../types/student'
-import type { BattleEnv, EffectAuditRecord, EffectLedgerEntry, Formation, Intent, SkillRef, StudentRuntimeState } from '../model/types'
+import type { BattleEnv, EffectAuditRecord, EffectLedgerEntry, Formation, Intent, SkillRef, StudentRuntimeState, SummonInstance } from '../model/types'
 import { DISPEL_RULES, SPECIAL_RULES } from './ruleManifest'
 import { normalizedEffectTargets, skillRequiresManualTarget } from './skillTargeting'
 import { applyCostModifier, normalizeCostChangeValueType } from './costModifier'
 import { applyCostOverloadRule } from './costOverloadRules'
+import { summonDurationMs, summonRule } from './summonRules'
+
+type EffectTargetId = number | string
 
 interface ActiveEffect {
   id: number
-  targetId: number
+  targetId: EffectTargetId
   sourceId: number
   skillRef: SkillRef
   effect: SkillEffect
@@ -24,11 +27,21 @@ interface PendingEffect {
   skillRef: SkillRef
   effectIndex: number
   effect: SkillEffect
-  targetIds: number[]
+  targetIds: EffectTargetId[]
   conditionEndFrame?: number
   skillLevel: number
   valueRow: number
   isTick?: boolean
+}
+interface PendingSummon {
+  frame: number
+  issuerId: number
+  sourceEventId: string
+  skillRef: SkillRef
+  effectIndexes: number[]
+  effects: SkillEffect[]
+  valueRows: number[]
+  skillLevel: number
 }
 
 export interface ResolvedSkill {
@@ -89,6 +102,9 @@ export function resolveSkill(student: Student, ref: SkillRef, levels?: number | 
 export class StudentEffectSystem {
   private readonly active: ActiveEffect[] = []
   private readonly pending: PendingEffect[] = []
+  private readonly pendingSummons: PendingSummon[] = []
+  private readonly summons: SummonInstance[] = []
+  private readonly cycleCursor = new Map<string, number>()
   private nextId = 1
   readonly audit: EffectAuditRecord[] = []
   readonly ledger: EffectLedgerEntry[] = []
@@ -102,7 +118,30 @@ export class StudentEffectSystem {
   }
 
   schedule(intent: Intent, skill: ResolvedSkill, frame: number): void {
+    const summonGroups = new Map<string, { effectIndexes: number[]; effects: SkillEffect[]; valueRows: number[] }>()
     for (const [effectIndex, effect] of skill.effects.entries()) {
+      if (effect.Type === 'Summon') {
+        // 保持对旧数据/测试用占位 Summon 的兼容：只有带 SummonId 的效果
+        // 才能建立可寻址的召唤物实例；其余仍作为普通效果进入审计。
+        if (effect.SummonId == null) {
+          const targetIds = this.resolveTargets(effect, intent)
+          this.pending.push({ frame: frame + (effect.ApplyFrame ?? 0), issuerId: intent.issuerId, skillRef: skill.ref, effectIndex, effect, targetIds, conditionEndFrame: intent.trigger?.conditionEndFrame, skillLevel: skill.level, valueRow: 0 })
+          this.audit.push({ frame, issuerId: intent.issuerId, targetIds, skillRef: skill.ref, effectIndex, effectType: effect.Type, action: 'scheduled', detail: 'legacy summon without SummonId' })
+          continue
+        }
+        const valueRow = this.resolveValueRow(intent.issuerId, skill.ref, effect)
+        if (valueRow < 0) {
+          this.audit.push({ frame, issuerId: intent.issuerId, targetIds: [], skillRef: skill.ref, effectIndex, effectType: effect.Type, action: 'rejected', detail: 'formation condition not met' })
+          continue
+        }
+        const key = `${effect.SummonId ?? -1}:${effect.ApplyFrame ?? 0}`
+        const group = summonGroups.get(key) ?? { effectIndexes: [], effects: [], valueRows: [] }
+        group.effectIndexes.push(effectIndex)
+        group.effects.push(effect)
+        group.valueRows.push(valueRow)
+        summonGroups.set(key, group)
+        continue
+      }
       const valueRow = this.resolveValueRow(intent.issuerId, skill.ref, effect)
       if (valueRow < 0) {
         this.audit.push({ frame, issuerId: intent.issuerId, targetIds: [], skillRef: skill.ref, effectIndex, effectType: effect.Type, action: 'rejected', detail: 'formation condition not met' })
@@ -113,6 +152,41 @@ export class StudentEffectSystem {
       const detail = `${intent.trigger?.source ?? intent.triggerSource ?? 'manual'}${intent.trigger?.reasons?.length ? `:${intent.trigger.reasons.join(',')}` : ''}`
       this.audit.push({ frame, issuerId: intent.issuerId, targetIds, skillRef: skill.ref, effectIndex, effectType: effect.Type, action: 'scheduled', detail })
     }
+    const selectedCycles = new Map<string, number>()
+    for (const group of summonGroups.values()) {
+      const summonId = group.effects[0]?.SummonId
+      if (summonId == null) continue
+      const rule = summonRule(summonId)
+      if (!rule.cycle) continue
+      const cycleKey = `${intent.issuerId}:${rule.cycle.join(',')}`
+      if (selectedCycles.has(cycleKey)) continue
+      const cursor = this.cycleCursor.get(cycleKey) ?? 0
+      selectedCycles.set(cycleKey, rule.cycle[cursor % rule.cycle.length] ?? summonId)
+      this.cycleCursor.set(cycleKey, (cursor + 1) % rule.cycle.length)
+    }
+    for (const group of summonGroups.values()) {
+      const effect = group.effects[0]
+      const summonId = effect?.SummonId
+      if (!effect || summonId == null) continue
+      const rule = summonRule(summonId)
+      if (rule.cycle) {
+        const cycleKey = `${intent.issuerId}:${rule.cycle.join(',')}`
+        if (selectedCycles.get(cycleKey) !== summonId) continue
+      }
+      this.pendingSummons.push({
+        frame: frame + (effect.ApplyFrame ?? 0),
+        issuerId: intent.issuerId,
+        sourceEventId: intent.id,
+        skillRef: skill.ref,
+        effectIndexes: group.effectIndexes,
+        effects: group.effects,
+        valueRows: group.valueRows,
+        skillLevel: skill.level,
+      })
+      for (const effectIndex of group.effectIndexes) {
+        this.audit.push({ frame, issuerId: intent.issuerId, targetIds: [intent.issuerId], skillRef: skill.ref, effectIndex, effectType: 'Summon', action: 'scheduled', detail: `summon:${summonId}` })
+      }
+    }
   }
 
   advance(frame: number, runtimes: Map<number, StudentRuntimeState>): void {
@@ -120,9 +194,19 @@ export class StudentEffectSystem {
       const active = this.active[i]
       if (active?.expiresAt != null && active.expiresAt <= frame) this.removeActive(i, frame, runtimes, 'expired')
     }
+    for (const summon of this.summons) {
+      if (summon.active && summon.expiresAt != null && summon.expiresAt <= frame) this.removeSummon(summon, frame, runtimes, 'expired')
+    }
     const due = this.pending.filter(item => item.frame <= frame)
     this.pending.splice(0, this.pending.length, ...this.pending.filter(item => item.frame > frame))
     for (const item of due) this.apply(item, frame, runtimes)
+    const dueSummons = this.pendingSummons.filter(item => item.frame <= frame)
+    this.pendingSummons.splice(0, this.pendingSummons.length, ...this.pendingSummons.filter(item => item.frame > frame))
+    for (const item of dueSummons) this.createSummon(item, frame, runtimes)
+  }
+
+  snapshotSummons(): SummonInstance[] {
+    return this.summons.filter(summon => summon.active).map(summon => ({ ...summon, stats: { ...summon.stats } }))
   }
 
   getEffectiveCost(studentId: number, baseCost: number): number {
@@ -216,11 +300,18 @@ export class StudentEffectSystem {
 
   validate(intent: Intent, skill: ResolvedSkill, runtimes: Map<number, StudentRuntimeState>, allowExtraEx = false): string | null {
     if (!this.students.has(intent.issuerId)) return 'unknown caster'
-    if (!intent.targetIds.length && this.requiresManualTarget(skill)) return 'target is required'
-    if (new Set(intent.targetIds).size !== intent.targetIds.length) return 'duplicate targets are not allowed'
+    const selectedTargets: EffectTargetId[] = [...intent.targetIds, ...(intent.targetSummonIds ?? [])]
+    if (!selectedTargets.length && this.requiresManualTarget(skill)) return 'target is required'
+    if (new Set(selectedTargets).size !== selectedTargets.length) return 'duplicate targets are not allowed'
     const hasCostOverload = skill.effects.some(effect => effect.Type === 'Special' && effect.Key === 'CostOverload')
-    if (hasCostOverload && intent.targetIds.length !== 1) return 'CostOverload requires exactly one target'
-    for (const targetId of intent.targetIds) {
+    if (hasCostOverload && selectedTargets.length !== 1) return 'CostOverload requires exactly one target'
+    for (const targetId of selectedTargets) {
+      if (typeof targetId === 'string') {
+        if (!this.summons.some(summon => summon.active && summon.instanceId === targetId)) return `summon target ${targetId} is not active`
+        if (!this.allowsAllySelection(skill) || !this.requiresManualTarget(skill)) return 'summon target is not valid for this skill'
+        if (hasCostOverload) return 'CostOverload target must be a STRIKER'
+        continue
+      }
       if (targetId !== -1 && ![...runtimes.values()].some(r => r.studentId === targetId)) return `target ${targetId} is not in formation`
       if (targetId === -1 && !this.allowsEnemy(skill)) return 'enemy target is not valid for this skill'
       if (targetId !== -1 && !this.allowsAllySelection(skill) && this.requiresManualTarget(skill)) return 'ally target is not valid for this skill'
@@ -232,10 +323,107 @@ export class StudentEffectSystem {
     if (skill.effects.some(e => e.Duration != null && e.Duration < 0) && intent.trigger?.source === 'manual' && intent.trigger.conditionEndFrame == null) return 'conditional effect requires an end frame'
     if (skill.ref.kind === 'extra_ex' && !allowExtraEx && !this.hasFormChange(intent.issuerId)) return 'extra EX requires an active FormChange state'
     for (const effect of skill.effects) {
-      const failure = effect.Condition ? this.validateCondition(effect.Condition, caster, intent.targetIds, skill) : null
+      const failure = effect.Condition ? this.validateCondition(effect.Condition, caster, selectedTargets, skill) : null
       if (failure) return failure
     }
     return null
+  }
+
+  private createSummon(pending: PendingSummon, frame: number, runtimes: Map<number, StudentRuntimeState>): void {
+    const first = pending.effects[0]
+    const summonId = first?.SummonId
+    if (first == null || summonId == null) return
+    const rule = summonRule(summonId)
+    const affected = this.summons.filter(instance => instance.active)
+    const replacement = rule.replaceScope === 'vehicle'
+      ? affected.filter(instance => instance.kind === 'vehicle')
+      : rule.replaceScope === 'owner'
+        ? affected.filter(instance => instance.ownerId === pending.issuerId && instance.summonId === summonId)
+        : []
+    for (const instance of replacement) this.removeSummon(instance, frame, runtimes, 'replaced')
+
+    const groupIds = rule.cycle ?? [summonId]
+    const concurrent = this.summons.filter(instance => instance.active && instance.ownerId === pending.issuerId && groupIds.includes(instance.summonId))
+    const requested = Math.max(1, rule.spawnCount?.(pending.skillRef) ?? 1)
+    const capacity = rule.maxCount == null ? requested : Math.max(0, rule.maxCount - concurrent.length)
+    if (capacity <= 0) {
+      this.audit.push({
+        frame,
+        issuerId: pending.issuerId,
+        targetIds: [pending.issuerId],
+        skillRef: pending.skillRef,
+        effectIndex: pending.effectIndexes[0] ?? -1,
+        effectType: 'Summon',
+        action: 'rejected',
+        detail: `summon:${summonId}:max_count:${rule.maxCount}`,
+      })
+      return
+    }
+    const count = Math.min(requested, capacity)
+    const stats = Object.fromEntries(pending.effects.map((effect, index) => [
+      effect.Stat ?? `Summon:${summonId}`,
+      effectAmount(effect, pending.skillLevel, pending.valueRows[index] ?? 0),
+    ]))
+    const duration = summonDurationMs(summonId, first.Duration)
+    const expiresAt = duration == null ? undefined : frame + durationToFrames(duration, undefined, frame)!
+    for (let index = 0; index < count; index++) {
+      const spawnIndex = index
+      const instanceId = `summon-${pending.sourceEventId}-${summonId}-${spawnIndex}`
+      const instance: SummonInstance = {
+        instanceId,
+        summonId,
+        kind: rule.kind,
+        ownerId: pending.issuerId,
+        sourceEventId: pending.sourceEventId,
+        sourceSkillRef: pending.skillRef,
+        spawnFrame: frame,
+        spawnIndex,
+        expiresAt,
+        stats: { ...stats },
+        active: true,
+      }
+      this.summons.push(instance)
+      const runtime = [...runtimes.values()].find(value => value.studentId === pending.issuerId)
+      if (runtime) runtime.summons[String(summonId)] = (runtime.summons[String(summonId)] ?? 0) + 1
+      this.audit.push({
+        frame,
+        issuerId: pending.issuerId,
+        targetIds: [pending.issuerId],
+        skillRef: pending.skillRef,
+        effectIndex: pending.effectIndexes[0] ?? -1,
+        effectType: 'Summon',
+        action: 'applied',
+        detail: `${rule.kind}:${summonId}:${instance.instanceId}`,
+        effectId: this.nextId++,
+        value: count,
+        expiresAt,
+        summon: { instanceId: instance.instanceId, summonId, kind: instance.kind, ownerId: instance.ownerId, spawnFrame: instance.spawnFrame, spawnIndex, expiresAt: instance.expiresAt },
+      })
+    }
+  }
+
+  private removeSummon(instance: SummonInstance, frame: number, runtimes: Map<number, StudentRuntimeState>, action: 'expired' | 'replaced'): void {
+    if (!instance.active) return
+    instance.active = false
+    const runtime = [...runtimes.values()].find(value => value.studentId === instance.ownerId)
+    if (runtime) {
+      const key = String(instance.summonId)
+      const next = Math.max(0, (runtime.summons[key] ?? 1) - 1)
+      if (next === 0) delete runtime.summons[key]
+      else runtime.summons[key] = next
+    }
+    this.audit.push({
+      frame,
+      issuerId: instance.ownerId,
+      targetIds: [instance.ownerId],
+      skillRef: instance.sourceSkillRef,
+      effectIndex: -1,
+      effectType: 'Summon',
+      action,
+      detail: `${instance.kind}:${instance.summonId}:${instance.instanceId}`,
+      expiresAt: instance.expiresAt,
+      summon: { instanceId: instance.instanceId, summonId: instance.summonId, kind: instance.kind, ownerId: instance.ownerId, spawnFrame: instance.spawnFrame, spawnIndex: instance.spawnIndex, expiresAt: instance.expiresAt },
+    })
   }
 
   private apply(pending: PendingEffect, frame: number, runtimes: Map<number, StudentRuntimeState>): void {
@@ -321,12 +509,12 @@ export class StudentEffectSystem {
     this.active.splice(index, 1)
     this.audit.push({ frame, issuerId: active.sourceId, targetIds: [active.targetId], skillRef: active.skillRef, effectIndex: -1, effectType: active.effect.Type, action, detail: active.key, effectId: active.id, stat: active.effect.Stat, value: active.amount, valueType: active.effect.Type === 'CostChange' ? normalizeCostChangeValueType(active.effect.ValueType) : undefined, uses: active.effect.Type === 'CostChange' ? active.uses : undefined, expiresAt: active.expiresAt })
   }
-  private dispel(targetId: number, frame: number, runtimes: Map<number, StudentRuntimeState>, pending: PendingEffect): void {
+  private dispel(targetId: EffectTargetId, frame: number, runtimes: Map<number, StudentRuntimeState>, pending: PendingEffect): void {
     const removable = new Set(DISPEL_RULES.default)
     for (let i = this.active.length - 1; i >= 0; i--) if (this.active[i]?.targetId === targetId && removable.has(this.active[i]!.effect.Type)) this.removeActive(i, frame, runtimes, 'dispelled')
     this.audit.push({ frame, issuerId: pending.issuerId, targetIds: [targetId], skillRef: pending.skillRef, effectIndex: pending.effectIndex, effectType: 'Dispel', action: 'applied' })
   }
-  private recordLedger(frame: number, pending: PendingEffect, targetId: number, effect: SkillEffect, detail?: string): void {
+  private recordLedger(frame: number, pending: PendingEffect, targetId: EffectTargetId, effect: SkillEffect, detail?: string): void {
     const type = effect.Type as EffectLedgerEntry['effectType']
     this.ledger.push({ frame, issuerId: pending.issuerId, targetId, skillRef: pending.skillRef, effectType: type, value: effectAmount(effect, pending.skillLevel, pending.valueRow), hits: effect.Hits?.length ?? 1, detail })
   }
@@ -353,13 +541,19 @@ export class StudentEffectSystem {
     }
     return 0
   }
-  private resolveTargets(effect: SkillEffect, intent: Intent): number[] {
-    const selected = new Set<number>(); const selectors = normalizedEffectTargets(effect)
-    if (!selectors.length) intent.targetIds.forEach(id => selected.add(id))
+  private resolveTargets(effect: SkillEffect, intent: Intent): EffectTargetId[] {
+    const selected = new Set<EffectTargetId>(); const selectors = normalizedEffectTargets(effect)
+    if (!selectors.length) {
+      intent.targetIds.forEach(id => selected.add(id))
+      intent.targetSummonIds?.forEach(id => selected.add(id))
+    }
     for (const selector of selectors) {
       if (selector === 'Self') selected.add(intent.issuerId)
       else if (selector === 'Enemy') selected.add(-1)
-      else if (selector === 'Any' || selector === 'Ally') intent.targetIds.forEach(id => { if (selector === 'Any' || id !== -1) selected.add(id) })
+      else if (selector === 'Any' || selector === 'Ally') {
+        intent.targetIds.forEach(id => { if (selector === 'Any' || id !== -1) selected.add(id) })
+        intent.targetSummonIds?.forEach(id => selected.add(id))
+      }
       else if (selector === 'AllyMain' || selector === 'AllySupport') for (const id of this.formation.slots) { const student = id == null ? undefined : this.students.get(id); if (id != null && id !== intent.issuerId && student && (selector === 'AllyMain' ? student.SquadType === 'Main' : student.SquadType === 'Support')) selected.add(id) }
     }
     return [...selected]
@@ -373,7 +567,7 @@ export class StudentEffectSystem {
     return this.formation.slots.length >= required
       && this.formation.slots.slice(0, required).every(studentId => studentId != null)
   }
-  private validateCondition(condition: unknown, runtime: StudentRuntimeState, targetIds: number[], skill: ResolvedSkill): string | null {
+  private validateCondition(condition: unknown, runtime: StudentRuntimeState, targetIds: EffectTargetId[], skill: ResolvedSkill): string | null {
     if (!condition || typeof condition !== 'object') return null
     const c = condition as { Type?: string; Parameter?: string; Operand?: string; Value?: unknown }
     const within = (actual: number, value: unknown) => { const v = Array.isArray(value) ? value : [value, value]; return actual >= Number(v[0] ?? 0) && actual <= Number(v[1] ?? v[0] ?? Number.POSITIVE_INFINITY) }
@@ -381,7 +575,7 @@ export class StudentEffectSystem {
     if (c.Type === 'Special') { const exists = (runtime.specialStacks[c.Parameter ?? ''] ?? 0) > 0; return exists === (c.Value !== false) ? null : `Special ${c.Parameter ?? ''} condition not met` }
     if (c.Type === 'SkillLevel') return within(skill.level, c.Value) ? null : `SkillLevel ${skill.level} not in range`
     if (c.Type === 'TargetProp') {
-      const id = targetIds.find(target => target !== -1); const source = id == null ? { ArmorType: this.env.armorType } : this.students.get(id)
+      const id = targetIds.find((target): target is number => typeof target === 'number' && target !== -1); const source = id == null ? { ArmorType: this.env.armorType } : this.students.get(id)
       if (!source || !c.Parameter || !(c.Parameter in source)) return null
       const equal = source[c.Parameter as keyof typeof source] === c.Value
       return (c.Operand === 'NotEqual' ? !equal : equal) ? null : `TargetProp ${c.Parameter} condition not met`

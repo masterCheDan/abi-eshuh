@@ -15,6 +15,10 @@ export interface SkillBlock {
   targetId?: number
   /** 多目标事实来源。targetId 保留用于旧存档兼容。 */
   targetIds?: number[]
+  /** 稳定事件 ID，用于分享码与召唤物目标跨导入复现。 */
+  eventId?: string
+  /** 已在场召唤物的稳定实例 ID；不占用学生 ID / Boss 占位。 */
+  targetSummonIds?: string[]
   /** 稳定技能引用；缺失时由 type 按旧行为推导。 */
   skillRef?: SkillRef
   /** 手动触发代表用户已确认概率/阈值等外部条件成立。 */

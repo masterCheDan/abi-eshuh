@@ -28,11 +28,12 @@ export function lanesToIntents(lanes: StudentLane[]): Intent[] {
     for (const skill of lane.skills) {
       const skillRef = skill.skillRef ?? inferSkillRef(skill.type, lane.student)
       intents.push({
-        id: `skill-${idCounter++}`,
+        id: skill.eventId ?? `skill-${idCounter++}`,
         frame: skill.startFrame,
         type: skillRef.kind === 'ex' || skillRef.kind === 'extra_ex' ? 'EX_CAST' : skillRef.kind === 'extra_passive' || skillRef.kind === 'passive' || skillRef.kind === 'weapon_passive' ? 'SS_TRIGGER' : 'NS_TRIGGER',
         issuerId: skill.studentId,
         targetIds: skill.targetIds ?? [skill.targetId ?? skill.studentId],
+        targetSummonIds: skill.targetSummonIds,
         priority: skillRef.kind === 'ex' || skillRef.kind === 'extra_ex' ? PRIORITY.EX_CAST : skillRef.kind === 'public' || skillRef.kind === 'gear_public' ? PRIORITY.NS_TRIGGER : PRIORITY.SS_TRIGGER,
         skillRef,
         triggerSource: skill.triggerSource ?? 'manual',
