@@ -40,8 +40,12 @@ scripts/fetch-images.mjs
 # Data files (dynamic/auto-generated, not committed)
 data/raids.json
 
-# Manual audit notes (not committed)
+# Local audit notes and validation reports (not committed)
 docs/ex-target-classification.md
+docs/baseline-*.md
+docs/baseline-*.inventory.json
+docs/step*-*.md
+docs/test-pruning-*.md
 
 # OS files
 .DS_Store
