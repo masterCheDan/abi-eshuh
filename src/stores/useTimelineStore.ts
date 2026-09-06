@@ -1,12 +1,24 @@
 import { create } from 'zustand'
 import type { Student } from '../types/student'
-import type { StudentLane, SkillBlock } from '../types/timeline'
+import type { StudentLane, SkillBlock, NsSuggestion } from '../types/timeline'
+import { normalizeTrigger } from '../domain/triggerEvidence'
 import type { SquadMode } from '../types/squad'
 
 const LS_KEY = 'abi-timeline'
 
+/** 为会话内新建的技能事件分配稳定 ID；分享码导入的事件保留自身 eventId。 */
+function newEventId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `e-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+}
+
 /** 可序列化的快照（student 由 SquadStore 负责，这里只存 ID 引用） */
 interface TimelineSnapshot {
+  frameLimit?: number | null
+  suggestions?: NsSuggestion[]
   mode: SquadMode
   skills: { slotIndex: number; skill: SkillBlock }[]
 }
@@ -19,14 +31,14 @@ function loadSnapshot(): TimelineSnapshot | null {
   } catch { return null }
 }
 
-function saveSnapshot(mode: SquadMode, lanes: StudentLane[]): void {
+function saveSnapshot(mode: SquadMode, lanes: StudentLane[], frameLimit: number | null, suggestions: NsSuggestion[]): void {
   const skills: TimelineSnapshot['skills'] = []
   for (const l of lanes) {
     for (const s of l.skills) {
       skills.push({ slotIndex: l.slotIndex, skill: s })
     }
   }
-  localStorage.setItem(LS_KEY, JSON.stringify({ mode, skills }))
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ mode, skills, frameLimit, suggestions })) } catch { /* storage may be unavailable */ }
 }
 
 /** 生成固定数量的轨道（空位） */
@@ -64,13 +76,19 @@ function createInitialLanes(): StudentLane[] {
   if (snap?.skills) {
     for (const { slotIndex, skill } of snap.skills) {
       const lane = lanes.find(l => l.slotIndex === slotIndex)
-      if (lane) lane.skills.push(skill)
+      const normalized = normalizeTrigger(skill)
+      if (lane) lane.skills.push('error' in normalized ? skill : { ...skill, ...normalized })
     }
   }
   return lanes
 }
 
 interface TimelineStore {
+  frameLimit: number | null
+  suggestions: NsSuggestion[]
+  setTotalFrames: (value: number | null) => void
+  replaceSuggestions: (suggestions: NsSuggestion[]) => void
+  confirmSuggestion: (id: string, patch: Partial<SkillBlock>) => void
   /** 所有学生轨道（固定数量） */
   lanes: StudentLane[]
   /** 总时长（帧），默认 3 分钟 = 5400 帧 */
@@ -101,14 +119,24 @@ interface TimelineStore {
 }
 
 export const useTimelineStore = create<TimelineStore>((set) => ({
+  frameLimit: loadSnapshot()?.frameLimit ?? null,
+  suggestions: loadSnapshot()?.suggestions ?? [],
+  setTotalFrames: value => set({ frameLimit: value, totalFrames: value ?? 5400 }),
+  replaceSuggestions: suggestions => set({ suggestions }),
+  confirmSuggestion: (id, patch) => set(state => {
+    const suggestion = state.suggestions.find(s => s.id === id)
+    if (!suggestion) return state
+    return { suggestions: state.suggestions.filter(s => s.id !== id), lanes: state.lanes.map(lane => lane.slotIndex === suggestion.slotIndex && lane.studentId === suggestion.block.studentId ? { ...lane, skills: [...lane.skills, { ...suggestion.block, ...patch }] } : lane) }
+  }),
   lanes: createInitialLanes(),
   totalFrames: 5400,
   scrollMode: 'zoom',
 
-  initLanes: (mode) => set({ lanes: createEmptyLanes(mode) }),
+  initLanes: (mode) => set({ lanes: createEmptyLanes(mode), suggestions: [] }),
 
   assignSlot: (slotIndex, student) =>
     set((state) => ({
+      suggestions: state.suggestions.filter(s => s.slotIndex !== slotIndex || s.block.studentId === student.Id),
       lanes: state.lanes.map((lane) =>
         lane.slotIndex === slotIndex
           ? { ...lane, student, studentId: student.Id }
@@ -118,6 +146,7 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
 
   unassignSlot: (slotIndex) =>
     set((state) => ({
+      suggestions: state.suggestions.filter(s => s.slotIndex !== slotIndex),
       lanes: state.lanes.map((lane) =>
         lane.slotIndex === slotIndex
           ? { ...lane, student: null, studentId: null, skills: [] }
@@ -129,7 +158,7 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
     set((state) => ({
       lanes: state.lanes.map((lane) =>
         lane.slotIndex === slotIndex
-          ? { ...lane, skills: [...lane.skills, block] }
+          ? { ...lane, skills: [...lane.skills, { ...block, eventId: block.eventId ?? newEventId() }] }
           : lane
       ),
     })),
@@ -178,7 +207,7 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
       ),
     })),
 
-  clearTimeline: () => set({ lanes: createEmptyLanes('normal') }),
+  clearTimeline: () => set({ lanes: createEmptyLanes('normal'), suggestions: [] }),
 
   replaceAllLanes: (lanes) => set({ lanes }),
 
@@ -206,6 +235,6 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
 useTimelineStore.subscribe((state) => {
   // 从 lanes 推断 mode
   const mode: SquadMode = state.lanes.length > 6 ? 'total_assault' : 'normal'
-  saveSnapshot(mode, state.lanes)
+  saveSnapshot(mode, state.lanes, state.frameLimit, state.suggestions)
 })
 

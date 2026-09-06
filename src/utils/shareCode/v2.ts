@@ -1,6 +1,8 @@
 /** 分享码 v2：保存所有学生技能事件、多个目标与触发来源。 */
-import type { SkillRef, TriggerSource, ShareCodePayloadV2 } from '../../engine/model/types'
+import type { SkillRef, TriggerSource, ShareCodePayloadV2 } from '../../engine'
 import type { StudentLane } from '../../types/timeline'
+import type { SquadSlot } from '../../types/squad'
+import { normalizeTrigger } from '../../domain/triggerEvidence'
 
 export const VERSION = '2.0.0' as const
 
@@ -8,10 +10,10 @@ function findSlotByStudentId(lanes: StudentLane[], studentId: number): number {
   return lanes.find(lane => lane.student?.Id === studentId)?.slotIndex ?? -1
 }
 
-function inferRef(skill: StudentLane['skills'][number], lane: StudentLane): SkillRef {
+function inferRef(skill: StudentLane['skills'][number], lane: StudentLane, gearLevel: number): SkillRef {
   if (skill.skillRef) return skill.skillRef
   if (skill.type === 'ex') return { kind: 'ex' }
-  if (skill.type === 'ns') return lane.student?.HasGear && lane.student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
+  if (skill.type === 'ns') return gearLevel > 0 && lane.student?.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
   return { kind: 'extra_passive' }
 }
 
@@ -22,13 +24,14 @@ export function encode(
   armorType = 'LightArmor',
   terrain = 0,
   deckOrder?: number[],
+  squadSlots?: SquadSlot[],
 ): string {
   const armorIdx = ['LightArmor', 'HeavyArmor', 'Unarmed', 'ElasticArmor'].indexOf(armorType)
   const events = lanes.flatMap(lane => lane.skills.map(skill => ({
     frame: skill.startFrame,
     casterSlot: lane.slotIndex,
     targetSlots: (skill.targetIds ?? [skill.targetId ?? skill.studentId]).map(id => id === -1 ? -1 : findSlotByStudentId(lanes, id)),
-    skillRef: inferRef(skill, lane),
+    skillRef: inferRef(skill, lane, squadSlots?.find(item => item.index === lane.slotIndex)?.gearLevel ?? 1),
     triggerSource: skill.triggerSource ?? 'manual' as TriggerSource,
   }))).sort((a, b) => a.frame - b.frame)
   const payload: ShareCodePayloadV2 = {
@@ -63,13 +66,17 @@ export function decode(raw: string): ImportDataV2 | null {
     const armorTypes = ['LightArmor', 'HeavyArmor', 'Unarmed', 'ElasticArmor']
     return {
       studentIds: payload.form.map(id => id ?? -1),
-      skills: payload.events.map(event => ({
+      skills: payload.events.map(event => {
+        const normalized = normalizeTrigger(event)
+        if ('error' in normalized) throw new Error(normalized.error)
+        return {
+        ...event,
+        ...normalized,
         frame: event.frame,
         casterSlot: event.casterSlot,
         targetSlots: event.targetSlots ?? [],
         skillRef: event.skillRef,
-        triggerSource: event.triggerSource ?? 'manual',
-      })),
+      } }),
       env: { bossId: payload.env[0], difficulty: payload.env[1], armorType: armorTypes[payload.env[2]] ?? 'LightArmor', terrain: payload.env[3] },
       deckOrder: payload.init ?? [],
     }

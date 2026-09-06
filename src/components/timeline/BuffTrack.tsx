@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { Student, BulletType } from '../../types/student'
 import type { StudentLane } from '../../types/timeline'
-import type { SkillRef } from '../../engine/model/types'
+import type { SkillRef } from '../../engine'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSimulationStore } from '../../stores/useSimulationStore'
 import { useThemeStore } from '../../stores/useThemeStore'
@@ -194,7 +194,7 @@ function EffectTooltip({ effects, startFrame, endFrame }: EffectTooltipProps) {
 
 export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
     // 订阅主题以触发 studentBuffStyle 重算
-    useThemeStore((state) => state.resolved)
+    const resolved = useThemeStore((state) => state.resolved)
     const allLanes = useTimelineStore((state) => state.lanes)
     const simulation = useSimulationStore((state) => state.result)
     const { student } = lane
@@ -232,7 +232,7 @@ export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
                             .map(effect => presentEffect(effect, allLanes))
                             .filter((effect): effect is PresentedEffect => effect != null)
                         if (effects.length === 0) return null
-                        const bg = studentBuffStyle(effects[0].casterSlot)
+                        const bg = studentBuffStyle(effects[0].casterSlot, false, resolved === 'dark')
                         const label = effects.length > 1 ? `∞ ×${effects.length}` : '∞'
                         return (
                             <div
@@ -278,7 +278,7 @@ export function BuffTrack({ lane, pxPerFrame }: BuffTrackProps) {
                                 type="button"
                                 aria-label={`${effect.casterName} ${effect.skillType}，${formatTimeMs(item.startFrame)} 至 ${formatTimeMs(item.endFrame)}`}
                                 className="block w-full h-full rounded-r border-l focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-cyan-300"
-                                style={studentBuffStyle(effect.casterSlot)}
+                                style={studentBuffStyle(effect.casterSlot, false, resolved === 'dark')}
                             />
                             <div className="absolute top-full right-0 mt-1 z-50 hidden group-hover/timed:block group-focus-within/timed:block pointer-events-none">
                                 <EffectTooltip

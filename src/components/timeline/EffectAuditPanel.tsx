@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { EffectAuditRecord } from '../../engine/model/types'
+import type { EffectAuditRecord } from '../../engine'
 import { useSimulationStore } from '../../stores/useSimulationStore'
 
 function timeOf(frame: number): string {
@@ -40,22 +40,29 @@ export function EffectAuditPanel() {
   const [open, setOpen] = useState(false)
   const result = useSimulationStore(s => s.result)
   const records = useMemo(() => result?.effectAudit ?? [], [result])
+  const schedules = result?.nsScheduling.records ?? []
 
   return (
     <div className="ba-panel ba-cut-panel overflow-hidden shrink-0">
       <button className="w-full flex items-center justify-between px-3 py-1.5 text-left" onClick={() => setOpen(value => !value)}>
         <span className="ba-eyebrow">效果审计</span>
-        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{records.length} {open ? '▾' : '▸'}</span>
+        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{records.length}{schedules.length > 0 ? ` · NS 调度 ${schedules.length}` : ''} {open ? '▾' : '▸'}</span>
       </button>
       {open && (
         <div className="max-h-40 overflow-y-auto border-t" style={{ borderColor: 'var(--border)' }}>
+          {schedules.map(record => <div key={record.id} className="px-3 py-1 border-b text-[10px]" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
+            <span style={{ color: 'var(--accent)' }}>自动 NS · ID:{record.studentId}</span>
+            <span className="ml-2">到期 {timeOf(record.triggerFrame)} → {record.castFrame == null ? record.status === 'rejected' ? '施放被拒绝' : '等待释放' : `实际释放 ${timeOf(record.castFrame)}`}</span>
+            {record.waits.map((wait, index) => <span className="ml-2" key={index}>{wait.reason === 'control' ? '受控等待' : '动作等待'} {timeOf(wait.startFrame)}—{timeOf(wait.endFrame ?? result!.maxFrame)}</span>)}
+            {record.message && <span className="ml-2" style={{ color: 'var(--text-muted)' }}>{record.message}</span>}
+          </div>)}
           {records.length === 0 ? <p className="px-3 py-2 text-[10px]" style={{ color: 'var(--text-muted)' }}>暂无已生效的学生技能效果</p> : records.map((record, index) => {
             const detail = detailOf(record)
             return (
               <div key={`${record.frame}-${record.issuerId}-${index}`} className="px-3 py-1 border-b text-[10px]" style={{ borderColor: 'var(--border-light)' }}>
                 <span className="font-mono mr-2" style={{ color: 'var(--accent)' }}>{timeOf(record.frame)}</span>
                 <span style={{ color: 'var(--text-secondary)' }}>{record.effectType} · {record.action}</span>
-                <span className="ml-1 font-mono" style={{ color: 'var(--text-muted)' }}>→ {record.targetIds.map(id => id === -1 ? 'Boss' : `ID:${id}`).join(', ') || '—'}</span>
+                <span className="ml-1 font-mono" style={{ color: 'var(--text-muted)' }}>→ {record.targetIds.map(id => id === -1 ? 'Boss' : typeof id === 'string' ? `召唤:${id}` : `ID:${id}`).join(', ') || '—'}</span>
                 {detail && <span className="ml-1" style={{ color: 'var(--text-muted)' }}>({detail})</span>}
               </div>
             )

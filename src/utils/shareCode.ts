@@ -13,6 +13,9 @@ import * as v001 from './shareCode/v001'
 import * as v1 from './shareCode/v1'
 import * as v2 from './shareCode/v2'
 import * as v3 from './shareCode/v3'
+import * as v4 from './shareCode/v4'
+import * as v5 from './shareCode/v5'
+import type { NsSchedulingConfig } from '../domain/rules/nsSchedulingRules'
 
 /* ══════════════════════════════════════════════════════
    版本注册表
@@ -29,6 +32,8 @@ export type { ImportData, ImportEvent } from './shareCode/v001'
 export type { ImportDataV1 } from './shareCode/v1'
 export type { ImportDataV2, ImportEventV2 } from './shareCode/v2'
 export type { ImportDataV3, ImportEventV3 } from './shareCode/v3'
+export type { ImportDataV4, ImportEventV4 } from './shareCode/v4'
+export type { ImportDataV5 } from './shareCode/v5'
 
 interface CodecEntry {
   version: string
@@ -43,9 +48,11 @@ const CODECS: Record<string, CodecEntry> = {
   [v1.VERSION]: { version: v1.VERSION, encode: v1.encode as (...args: unknown[]) => string, decode: v1.decode as (raw: string) => unknown, isJson: true },
   [v2.VERSION]: { version: v2.VERSION, encode: v2.encode as (...args: unknown[]) => string, decode: v2.decode as (raw: string) => unknown, isJson: true },
   [v3.VERSION]: { version: v3.VERSION, encode: v3.encode as (...args: unknown[]) => string, decode: v3.decode as (raw: string) => unknown, isJson: true },
+  [v4.VERSION]: { version: v4.VERSION, encode: v4.encode as (...args: unknown[]) => string, decode: v4.decode as (raw: string) => unknown, isJson: true },
+  [v5.VERSION]: { version: v5.VERSION, encode: v5.encode as (...args: unknown[]) => string, decode: v5.decode as (raw: string) => unknown, isJson: true },
 }
 
-const CURRENT_VERSION = v3.VERSION
+const CURRENT_VERSION = v5.VERSION
 
 /* ══════════════════════════════════════════════════════
    公开 API
@@ -67,11 +74,13 @@ export function encodeShareCode(
   terrain = 0,
   deckOrder?: number[],
   squadSlots?: SquadSlot[],
+  maxFrame = 5400,
+  nsScheduling?: NsSchedulingConfig,
 ): ShareCodeResult {
   const codec = CODECS[CURRENT_VERSION]
   if (!codec) throw new Error(`Unknown version: ${CURRENT_VERSION}`)
 
-  const raw = codec.encode(lanes, bossId, difficulty, armorType, terrain, deckOrder, squadSlots)
+  const raw = codec.encode(lanes, bossId, difficulty, armorType, terrain, deckOrder, squadSlots, maxFrame, nsScheduling)
   const bytes = new TextEncoder().encode(raw)
   const binary = String.fromCharCode(...bytes)
   return { version: CURRENT_VERSION, code: btoa(binary) }

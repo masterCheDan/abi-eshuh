@@ -1,36 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useTimelineStore } from '../../stores/useTimelineStore'
-import { useSquadStore } from '../../stores/useSquadStore'
-import { useBossStore } from '../../stores/useBossStore'
 import { useStudentStore } from '../../stores/useStudentStore'
 import { useI18n } from '../../i18n'
 import { decodeShareCode } from '../../utils/planExport'
-import type { ImportData } from '../../utils/planExport'
-import type { StudentLane } from '../../types/timeline'
-import type { SkillRef, TriggerSource, TriggerEvidence } from '../../engine/model/types'
-
-type CompatibleImport = {
-  studentIds: number[]
-  skills: Array<{ frame: number; eventId?: string; casterSlot: number; targetSlot?: number; targetSlots?: number[]; targetSummonIds?: string[]; skillRef?: SkillRef; triggerSource?: TriggerSource; trigger?: TriggerEvidence; skillCost?: number; skillDuration?: number; overrideOffset?: number }>
-  ranks?: Array<[number, number] | null>
-}
-
-function blockType(ref: SkillRef): 'ex' | 'ns' | 'ss' {
-  return ref.kind === 'ex' || ref.kind === 'extra_ex' ? 'ex' : ref.kind === 'public' || ref.kind === 'gear_public' ? 'ns' : 'ss'
-}
-
-function skillName(student: NonNullable<StudentLane['student']>, ref: SkillRef): string {
-  if (ref.kind === 'public') return student.Skills.P?.Name ?? student.Skills.E.Name
-  if (ref.kind === 'gear_public') return student.Skills.G?.Name ?? student.Skills.P?.Name ?? student.Skills.E.Name
-  if (ref.kind === 'extra_passive') return student.Skills.EP.Name
-  if (ref.kind === 'passive') return student.Skills.PS.Name
-  if (ref.kind === 'weapon_passive') return student.Skills.WP.Name
-  if (ref.kind === 'extra_ex') {
-    const extras = student.Skills.E.ExtraSkills ?? []
-    return (ref.extraSkillId ? extras.find(s => s.Id === ref.extraSkillId) : extras[ref.extraSkillIndex ?? 0])?.Name ?? student.Skills.E.Name
-  }
-  return student.Skills.E.Name
-}
+import { importPlanIntoStores } from '../../stores/planTransfer'
 
 interface ImportDialogProps { onClose: () => void }
 
@@ -39,7 +11,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const [codeText, setCodeText] = useState('')
   const [error, setError] = useState('')
-  const replaceAllLanes = useTimelineStore((s) => s.replaceAllLanes)
+  const [notice, setNotice] = useState('')
   const students = useStudentStore((s) => s.students)
 
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -68,88 +40,10 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
       return
     }
 
-    const data = result.data as ImportData & CompatibleImport & {
-      env?: { bossId: number; difficulty: number; armorType: string; terrain: number }
-      deckOrder?: number[]
-    }
-    const { studentIds, skills } = data
-
-    // ── 1. 建立新的 SquadSlot 数组 + TimeLane 数组 ──
-    const newLanes: StudentLane[] = []
-    const squadSlots: import('../../types/squad').SquadSlot[] = []
-
-    const mainSlotCount = studentIds.length > 6 ? 6 : 4
-    for (let i = 0; i < studentIds.length; i++) {
-      const sid = studentIds[i]
-      const student = sid >= 0 && students[sid] ? students[sid] : null
-      const isMain = i < mainSlotCount
-      const rank = data.ranks?.[i]
-
-      squadSlots.push({
-        index: i,
-        slotType: isMain ? 'Main' : 'Support',
-        label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - mainSlotCount + 1}`,
-        student,
-        locked: !!student,
-        exLevel: 5,
-        nsLevel: 10,
-        ssLevel: 10,
-        starLevel: student ? rank?.[0] ?? student.StarGrade : 0,
-        uniqueWeaponLevel: student ? rank?.[1] ?? 0 : 0,
-      })
-
-      newLanes.push({
-        slotIndex: i,
-        label: isMain ? `STRIKER ${i + 1}` : `SPECIAL ${i - mainSlotCount + 1}`,
-        student,
-        studentId: student?.Id ?? null,
-        skills: [],
-      })
-    }
-
-    // ── 2. 添加技能事件 ──
-    for (const ev of skills) {
-      const lane = newLanes[ev.casterSlot]
-      if (!lane || !lane.student) continue
-
-      const targetSlots = ev.targetSlots ?? (ev.targetSlot == null ? [] : [ev.targetSlot])
-      const targetIds = targetSlots.map(targetSlot => {
-        if (targetSlot === -1) return -1
-        return newLanes[targetSlot]?.student?.Id ?? -1
-      })
-      const ref = ev.skillRef ?? { kind: 'ex' } as SkillRef
-
-      lane.skills.push({
-        type: blockType(ref),
-        name: skillName(lane.student, ref),
-        startFrame: ev.frame,
-        eventId: ev.eventId,
-        studentId: lane.student.Id,
-        targetId: targetIds[0] ?? lane.student.Id,
-        targetIds,
-        targetSummonIds: ev.targetSummonIds,
-        skillCost: ev.skillCost,
-        skillDuration: ev.skillDuration,
-        overrideOffset: ev.overrideOffset,
-        skillRef: ref,
-        triggerSource: ev.triggerSource ?? 'manual',
-        trigger: ev.trigger ?? { source: ev.triggerSource ?? 'manual' },
-      })
-    }
-
-    // ── 3. 替换 SquadStore + TimelineStore ──
-    useSquadStore.getState().replaceAllSlots(squadSlots)
-    useSquadStore.getState().setDeckOrder(data.deckOrder?.length ? data.deckOrder : [])
-    if (data.env) {
-      const bossStore = useBossStore.getState()
-      bossStore.selectBoss(data.env.bossId)
-      bossStore.selectDifficulty(data.env.difficulty)
-      bossStore.selectArmorType(data.env.armorType as import('../../types/boss').BossArmorType)
-      const terrains = ['Street', 'Outdoor', 'Indoor'] as const
-      bossStore.selectTerrain(terrains[data.env.terrain] ?? 'Street')
-    }
-    replaceAllLanes(newLanes)
-    onClose()
+    const prepared = importPlanIntoStores(result, new Map(Object.values(students).map(student => [student.Id, student])))
+    if ('error' in prepared) { setError(prepared.error); return }
+    if (prepared.plan.warnings.length) setNotice('导入成功。' + prepared.plan.warnings.join(' '))
+    else onClose()
   }
 
   return (
@@ -172,12 +66,13 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
         <div className="flex flex-col flex-1 min-h-0 p-4">
           <textarea
             value={codeText}
-            onChange={(e) => { setCodeText(e.target.value); setError('') }}
+            onChange={(e) => { setCodeText(e.target.value); setError(''); setNotice('') }}
             placeholder={t.timeline.import_placeholder}
             className="flex-1 min-h-[120px] rounded p-3 text-xs font-mono leading-relaxed resize-none border"
             style={{ background: 'var(--bg-app)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
           />
 
+          {notice && <div role="status" className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>{notice}<button className="ml-2 underline" onClick={onClose}>完成</button></div>}
           {error && (
             <div className="mt-2 text-[11px] text-red-400">{error}</div>
           )}

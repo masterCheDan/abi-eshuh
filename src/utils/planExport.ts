@@ -4,6 +4,7 @@
 
 import type { SkillBlock, StudentLane } from '../types/timeline'
 import type { Student } from '../types/student'
+import type { SlotLevels } from '../types/squad'
 import { runSimulation, COST_SCALE } from '../engine'
 
 /* ── 帧 → m:ss.ms ── */
@@ -69,11 +70,11 @@ export function exportNaturalLanguage(lanes: StudentLane[]): string {
    ══════════════════════════════════════════════════════ */
 
 /** 计算 Cost 时间线并导出基于费用的文本 */
-export function exportCostBased(lanes: StudentLane[], _mode: 'normal' | 'total_assault' = 'normal'): string {
+export function exportCostBased(lanes: StudentLane[], _mode: 'normal' | 'total_assault' = 'normal', slotLevels: ReadonlyArray<SlotLevels>): string {
     // 队伍模式由 Engine 从 formation 推导；保留参数以兼容既有调用。
     void _mode
     const students = new Map(lanes.flatMap(lane => lane.student ? [[lane.student.Id, lane.student] as const] : []))
-    const timeline = runSimulation(lanes, students).costHistory
+    const timeline = runSimulation({ lanes, students, slotLevels }).costHistory
 
     const lines: string[] = []
 

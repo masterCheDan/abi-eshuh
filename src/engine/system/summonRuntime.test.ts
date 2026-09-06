@@ -3,7 +3,7 @@ import type { Student } from '../../types/student'
 import type { Intent } from '../model/types'
 import { SimulationEngine } from '../core/simulationEngine'
 
-function unit(id: number, effects: Student['Skills']['E']['Effects']): Student {
+function unit(id: number, effects: Student['Skills']['E']['Effects'], gear?: Student['Skills']['G']): Student {
   const passive = { Name: '', Desc: '', Parameters: [], Icon: '', Effects: [] }
   return {
     Id: id, Name: `S${id}`, Icon: '', School: 'Abydos', SquadType: 'Main', TacticRole: 'DamageDealer', Position: 'Front', StarGrade: 3,
@@ -13,8 +13,8 @@ function unit(id: number, effects: Student['Skills']['E']['Effects']): Student {
     Skills: {
       N: { Frames: { AttackEnterDuration: 0, AttackStartDuration: 0, AttackEndDuration: 0, AttackBurstRoundOverDelay: 0, AttackIngDuration: 0, AttackReloadDuration: 0 } },
       E: { Name: 'EX', Desc: '', Parameters: [], Cost: [0, 0, 0, 0, 0], Duration: 1, Range: 0, Icon: '', Effects: effects },
-      P: { ...passive }, G: null, PS: { ...passive }, WP: { ...passive }, EP: { ...passive },
-    }, Weapon: { ATK: 0, HP: 0, HEAL: 0 }, HasGear: false,
+      P: { ...passive }, G: gear ?? null, PS: { ...passive }, WP: { ...passive }, EP: { ...passive },
+    }, Weapon: { ATK: 0, HP: 0, HEAL: 0 }, HasGear: !!gear,
   } as unknown as Student
 }
 
@@ -71,5 +71,67 @@ describe('summon runtime instances', () => {
     ])
     expect(result.effectAudit).toContainEqual(expect.objectContaining({ effectType: 'Buff', action: 'applied', targetIds: [summonTarget] }))
     expect(result.errors).toContainEqual(expect.objectContaining({ type: 'INVALID_TARGET', message: expect.stringContaining('not active') }))
+  })
+
+  it('applies a summon at the cast frame when ApplyFrame is 0', () => {
+    const caster = unit(1, [{ Type: 'Summon', SummonId: 40015, Stat: 'MaxHP_Base', Value: [[100]], Duration: 30_000 }])
+    const result = simulate([caster], [ex('spawn', 0, caster.Id)])
+    const applied = result.effectAudit.find(record => record.effectType === 'Summon' && record.action === 'applied')
+    expect(applied?.frame).toBe(0)
+    expect(result.finalSummons[0]?.spawnFrame).toBe(0)
+  })
+
+  it('applies a summon at cast frame plus ApplyFrame when deferred', () => {
+    const caster = unit(1, [{ Type: 'Summon', SummonId: 40015, Stat: 'MaxHP_Base', Value: [[100]], Duration: 30_000, ApplyFrame: 30 }])
+    const result = simulate([caster], [ex('spawn', 0, caster.Id)])
+    const applied = result.effectAudit.find(record => record.effectType === 'Summon' && record.action === 'applied')
+    expect(applied?.frame).toBe(30)
+    expect(result.finalSummons[0]?.spawnFrame).toBe(30)
+  })
+
+  it('allows same-frame chaining: buff at frame 0 targets a summon cast at frame 0', () => {
+    const caster = unit(1, [{ Type: 'Summon', SummonId: 40015, Stat: 'MaxHP_Base', Value: [[100]], Duration: 30_000 }])
+    const support = unit(2, [])
+    support.Skills.P.Effects = [{ Type: 'Buff', Target: 'Ally', Stat: 'AttackPower_Base', Scale: [100], Duration: 1_000 }]
+    const result = simulate([caster, support], [
+      ex('spawn', 0, caster.Id),
+      { id: 'buff', frame: 0, issuerId: support.Id, type: 'NS_TRIGGER', targetIds: [], targetSummonIds: ['summon-spawn-40015-0'], priority: 2, skillRef: { kind: 'public' }, triggerSource: 'manual', trigger: { source: 'manual' } },
+    ])
+    expect(result.errors).toEqual([])
+    expect(result.effectAudit).toContainEqual(expect.objectContaining({ effectType: 'Buff', action: 'applied', targetIds: ['summon-spawn-40015-0'] }))
+  })
+
+  it('expires a summon one frame after its duration elapses', () => {
+    const caster = unit(1, [{ Type: 'Summon', SummonId: 40015, Stat: 'MaxHP_Base', Value: [[100]], Duration: 30 }])
+    const result = simulate([caster], [ex('spawn', 0, caster.Id)])
+    expect(result.finalSummons).toHaveLength(0)
+    const expired = result.effectAudit.filter(record => record.effectType === 'Summon' && record.action === 'expired')
+    expect(expired).toHaveLength(1)
+    expect(expired[0]?.frame).toBe(1)
+  })
+
+  it('accumulates three MK-II turrets per gear cast without a cap', () => {
+    const caster = unit(1, [{ Type: 'Summon', SummonId: 40005, Duration: 50_000 }], { Name: 'G', Desc: '', Parameters: [], Duration: 0, Range: 0, Icon: '', Effects: [{ Type: 'Summon', SummonId: 40005, Duration: 50_000 }] })
+    const result = simulate([caster], [
+      { id: 'ns1', frame: 0, issuerId: caster.Id, type: 'NS_TRIGGER', targetIds: [caster.Id], priority: 2, skillRef: { kind: 'gear_public' }, triggerSource: 'manual', trigger: { source: 'manual' } },
+      { id: 'ns2', frame: 10, issuerId: caster.Id, type: 'NS_TRIGGER', targetIds: [caster.Id], priority: 2, skillRef: { kind: 'gear_public' }, triggerSource: 'manual', trigger: { source: 'manual' } },
+    ])
+    expect(result.finalSummons).toHaveLength(6)
+  })
+
+  it('includes active summons in formation-wide ally buffs for manifest skills', () => {
+    const caster = unit(1, [{ Type: 'Summon', SummonId: 40015, Stat: 'MaxHP_Base', Value: [[100]], Duration: 30_000 }])
+    const nerusa = unit(20051, [])
+    nerusa.Skills.P.Effects = [{ Type: 'Buff', Target: ['AllyMain'], Stat: 'CriticalDamageRate_Coefficient', Value: [[1348]], Duration: 33_000 }]
+    const result = simulate([caster, nerusa], [
+      ex('spawn', 0, caster.Id),
+      { id: 'buff', frame: 10, issuerId: nerusa.Id, type: 'NS_TRIGGER', targetIds: [], priority: 2, skillRef: { kind: 'public' }, triggerSource: 'manual', trigger: { source: 'manual' } },
+    ])
+    expect(result.errors).toEqual([])
+    const scheduled = result.effectAudit.find(record => record.effectType === 'Buff' && record.action === 'scheduled' && record.issuerId === nerusa.Id)
+    expect(scheduled?.targetIds).toEqual(expect.arrayContaining([caster.Id, 'summon-spawn-40015-0']))
+    const applied = result.effectAudit.filter(record => record.effectType === 'Buff' && record.action === 'applied' && record.issuerId === nerusa.Id)
+    expect(applied.some(record => record.targetIds.includes(caster.Id))).toBe(true)
+    expect(applied.some(record => record.targetIds.includes('summon-spawn-40015-0'))).toBe(true)
   })
 })

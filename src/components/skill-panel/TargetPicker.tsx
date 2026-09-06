@@ -1,17 +1,17 @@
-export interface TargetOption { id: number; label: string }
+export interface TargetOption<T extends string | number = number> { id: T; label: string }
 
-interface TargetPickerProps {
-  options: TargetOption[]
-  selectedIds: number[]
-  onChange: (ids: number[]) => void
+interface TargetPickerProps<T extends string | number> {
+  options: TargetOption<T>[]
+  selectedIds: T[]
+  onChange: (ids: T[]) => void
   label?: string
   multiple?: boolean
 }
 
 /** 可点击的多目标选择器；无需 Ctrl/Shift，适合时间轴排轴操作。 */
-export function TargetPicker({ options, selectedIds, onChange, label = '目标', multiple = true }: TargetPickerProps) {
+export function TargetPicker<T extends string | number>({ options, selectedIds, onChange, label = '目标', multiple = true }: TargetPickerProps<T>) {
   const selected = new Set(selectedIds)
-  const toggle = (id: number) => {
+  const toggle = (id: T) => {
     if (!multiple) {
       onChange(selected.has(id) ? [] : [id])
       return

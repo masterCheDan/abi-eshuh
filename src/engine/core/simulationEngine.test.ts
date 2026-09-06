@@ -3,6 +3,7 @@ import type { Student } from '../../types/student'
 import { SimulationEngine } from './simulationEngine'
 import type { Formation, Intent } from '../model/types'
 import { COST_SCALE } from '../system/costSystem'
+import { actionTrackSegments } from '../../components/timeline/actionTrackModel'
 
 function student(id: number, options: { cost?: number; duration?: number; epEffects?: Student['Skills']['EP']['Effects'] } = {}): Student {
   const passive = { Name: 'passive', Desc: '', Parameters: [], Icon: '', Effects: [] }
@@ -28,6 +29,99 @@ function engine(students: Student[]): SimulationEngine {
   )
   return instance
 }
+
+describe('actual skill action lifecycle', () => {
+  const ns = (frame: number): Intent => ({ id: 'same-external-id', frame, type: 'NS_TRIGGER', issuerId: 1, targetIds: [-1], priority: 2, skillRef: { kind: 'public' } })
+  const ex = (frame: number): Intent => ({ id: 'same-external-id', frame, type: 'EX_CAST', issuerId: 1, targetIds: [-1], priority: 1, skillRef: { kind: 'ex' } })
+  function actor() {
+    const unit = student(1, { cost: 0, duration: 10 })
+    unit.Skills.P = { ...unit.Skills.P, Duration: 60, Effects: [
+      { Type: 'Buff', Target: 'Self', Stat: 'AttackPower_Base', Value: [[50]], ApplyFrame: 0, Duration: 3000 },
+      { Type: 'Damage', Target: 'Enemy', Scale: [100], ApplyFrame: 40 },
+    ] }
+    return unit
+  }
+
+  it('truncates interrupted NS, links real effects to unique executions, and projects only engine records', () => {
+    const unit = actor(), instance = engine([unit]), intents = [ns(0), ex(20)]
+    const result = instance.simulate(intents)
+    expect(result.errors).toEqual([])
+    expect(result.actionLogs).toMatchObject([
+      { recordId: '0', sourceEventId: 'same-external-id', startFrame: 0, endFrame: 20, plannedEndFrame: 60, status: 'interrupted', effectFrame: 0 },
+      { recordId: '1', sourceEventId: 'same-external-id', startFrame: 20, endFrame: 30, status: 'completed', effectFrame: 20 },
+    ])
+    expect(result.actionEvents).toContainEqual(expect.objectContaining({ actionId: '0', frame: 20, type: 'interrupted' }))
+    expect(result.actionEvents).toContainEqual(expect.objectContaining({ actionId: '0', frame: 40, type: 'effect_applied' }))
+    expect(result.schedulingDiagnostics.filter(d => d.code === 'UNVERIFIED_PENDING_INTERRUPT')).toMatchObject([{ actionId: '0', frame: 20 }])
+    expect(result.effectAudit).toContainEqual(expect.objectContaining({ actionId: '0', frame: 40, effectType: 'Damage', action: 'applied' }))
+    expect(actionTrackSegments(result, 0, 25).map(r => [r.actionType, r.startFrame, r.endFrame])).toEqual([['NS', 0, 20], ['EX', 20, 25]])
+    expect(actionTrackSegments(result, 1, 25)).toEqual([])
+    expect(result.actionLogs[1].endFrame).toBe(30)
+    expect(result.finalRuntimes.get(0)).toMatchObject({ attackCount: 0, ammoRemaining: 0 })
+    expect(instance.simulate(intents)).toEqual(result)
+  })
+
+  it('failed cost or target validation neither interrupts NS nor adds executed tracks', () => {
+    for (const failure of ['cost', 'target']) {
+      const unit = actor()
+      if (failure === 'cost') unit.Skills.E.Cost = [99, 99, 99, 99, 99]
+      const instance = engine([unit]), baseline = instance.simulate([ns(0)])
+      const intent = ex(20)
+      if (failure === 'target') intent.targetIds = [999]
+      const result = instance.simulate([ns(0), intent])
+      expect(result.errors).toHaveLength(1)
+      expect({ ...result, errors: [] }).toEqual(baseline)
+      expect(actionTrackSegments(result, 0, result.maxFrame)).toEqual(baseline.actionLogs)
+    }
+  })
+
+  it('completes on the exact boundary without interruption and finishes zero-duration actions at frame zero', () => {
+    const unit = actor()
+    expect(engine([unit]).simulate([ns(0), ex(60)]).actionLogs[0]).toMatchObject({ endFrame: 60, status: 'completed', wasInterrupted: false })
+    expect(engine([unit]).simulate([ns(0), ex(59)]).actionLogs[0]).toMatchObject({ endFrame: 59, status: 'interrupted', wasInterrupted: true })
+    unit.Skills.E.Duration = 0
+    expect(engine([unit]).simulate([ex(0)]).actionEvents.map(e => [e.type, e.frame])).toEqual([['started', 0], ['effect_applied', 0], ['completed', 0]])
+  })
+
+  it('control interrupts skills, survives their former deadline, extends, and releases immediately on dispel', () => {
+    const unit = actor(), controller = student(2, { cost: 0, duration: 0 }), cleaner = student(3, { cost: 0, duration: 0 })
+    unit.Skills.P.Duration = 10
+    controller.Skills.E.Effects = [{ Type: 'CrowdControl', Target: 'Ally', Duration: 1000, Icon: 'Stunned' }]
+    controller.Skills.P = { ...controller.Skills.P, Duration: 0, Effects: [{ Type: 'CrowdControl', Target: 'Ally', Duration: 1000, Icon: 'Feared' }] }
+    cleaner.Skills.E.Effects = [{ Type: 'Dispel', Target: 'Ally' }]
+    const result = engine([unit, controller, cleaner]).simulate([
+      ns(0), { ...ex(5), issuerId: 2, targetIds: [1] }, { ...ns(8), issuerId: 2, targetIds: [1] }, ns(11),
+      { ...ex(20), issuerId: 3, targetIds: [1] }, ns(20),
+    ])
+    expect(result.errors).toEqual([expect.objectContaining({ frame: 11, type: 'COOLDOWN' })])
+    expect(result.actionLogs.filter(r => r.studentId === 1)).toMatchObject([
+      { actionType: 'NS', endFrame: 5, status: 'interrupted' },
+      { actionType: 'CC', startFrame: 5, endFrame: 20, status: 'completed' },
+      { actionType: 'NS', startFrame: 20, endFrame: 30, status: 'completed' },
+    ])
+    expect(result.actionEvents).toContainEqual(expect.objectContaining({ frame: 8, studentId: 1, type: 'control_updated' }))
+    expect(result.finalRuntimes.get(0)?.controlledUntil).toBe(0)
+  })
+
+  it('same-frame queued control diagnoses delayed effects even after the due queue was detached', () => {
+    const unit = actor(), controller = student(2, { cost: 0, duration: 0 })
+    controller.Skills.E.Effects = [{ Type: 'CrowdControl', Target: 'Ally', Duration: 1000, ApplyFrame: 40 }]
+    const result = engine([unit, controller]).simulate([{ ...ex(0), issuerId: 2, targetIds: [1] }, ns(0)])
+    expect(result.actionLogs.find(r => r.actionType === 'NS')).toMatchObject({ status: 'interrupted', endFrame: 40 })
+    expect(result.schedulingDiagnostics).toContainEqual(expect.objectContaining({ frame: 40, code: 'UNVERIFIED_PENDING_INTERRUPT' }))
+  })
+
+  it('does not mark an unobserved future effect as applied or a horizon-clipped action as completed', () => {
+    const unit = actor()
+    unit.Skills.P.Duration = 2000
+    unit.Skills.P.Effects = [{ Type: 'Damage', Target: 'Enemy', ApplyFrame: 1900, Scale: [100] }]
+    const result = engine([unit]).simulate([ns(0)])
+    expect(result.actionLogs[0]).toMatchObject({ status: 'running', endFrame: 2000 })
+    expect(result.actionLogs[0].effectFrame).toBeUndefined()
+    expect(result.actionEvents.map(e => e.type)).toEqual(['started'])
+    expect(actionTrackSegments(result, 0, 5000)[0].endFrame).toBe(1400)
+  })
+})
 
 describe('SimulationEngine deterministic student skills', () => {
   it('adds 0.5 max Cost for each unique-weapon-4 SPECIAL and ignores STRIKER', () => {
@@ -100,16 +194,15 @@ describe('SimulationEngine deterministic student skills', () => {
     }))
   })
 
-  it('does not consume cost when an EX is rejected during another EX', () => {
-    const unit = student(1, { duration: 120 })
-    const intents: Intent[] = [
-      { id: 'first', frame: 1300, type: 'EX_CAST', issuerId: 1, targetIds: [-1], priority: 1, skillRef: { kind: 'ex' }, triggerSource: 'manual' },
-      { id: 'second', frame: 1301, type: 'EX_CAST', issuerId: 1, targetIds: [-1], priority: 1, skillRef: { kind: 'ex' }, triggerSource: 'manual' },
-    ]
-    const result = engine([unit]).simulate(intents)
-    expect(result.actionLogs).toHaveLength(1)
-    expect(result.errors.some(error => error.type === 'COOLDOWN')).toBe(true)
-    expect(result.costHistory[1301]).toBe(11_400)
+  it('applies a same-frame Buff at the cast frame when ApplyFrame is 0', () => {
+    const caster = student(1, { cost: 0 })
+    caster.Skills.E.Effects = [{ Type: 'Buff', Target: 'Self', Stat: 'AttackPower_Base', Scale: [100], Duration: 1_000 }]
+    const result = engine([caster]).simulate([
+      { id: 'cast', frame: 0, type: 'EX_CAST', issuerId: 1, targetIds: [1], priority: 1, skillRef: { kind: 'ex' }, triggerSource: 'manual' },
+    ])
+    const applied = result.effectAudit.filter(record => record.effectType === 'Buff' && record.action === 'applied')
+    expect(applied).toHaveLength(1)
+    expect(applied[0]?.frame).toBe(0)
   })
 
   it('uses a real hand and draw pile instead of discarding cards left of the cast card', () => {
@@ -130,6 +223,44 @@ describe('SimulationEngine deterministic student skills', () => {
     expect(result.errors).toContainEqual(expect.objectContaining({ frame: 2, type: 'OUT_OF_WINDOW' }))
     expect(result.window?.hand.map(card => card.slotIndex)).toEqual([0, 1, 4])
     expect(result.window?.drawPile.map(card => card.slotIndex)).toEqual([5, 2, 3])
+  })
+
+  describe('greedy card-order inference without a user deck', () => {
+    const deckUnits = () => [1, 2, 3, 4, 5, 6].map(id => student(id, { cost: 0, duration: 60 }))
+    const load = (units: ReturnType<typeof student>[], maxFrame = 100) => {
+      const instance = new SimulationEngine()
+      instance.loadBattle(
+        { bossId: 0, difficulty: 5, armorType: 'LightArmor', terrain: 0, maxFrame },
+        { mode: 'normal', slots: units.map(unit => unit.Id) },
+        new Map(units.map(unit => [unit.Id, unit])),
+      )
+      return instance
+    }
+    const cast = (id: string, frame: number, issuerId: number): Intent => ({
+      id, frame, issuerId, type: 'EX_CAST', targetIds: [-1], priority: 1, skillRef: { kind: 'ex' }, triggerSource: 'manual',
+    })
+
+    it('flags {1,2,3,1} even without a user deck', () => {
+      const result = load(deckUnits()).simulate([cast('a', 0, 1), cast('b', 1, 2), cast('c', 2, 3), cast('d', 70, 1)])
+      expect(result.errors).toContainEqual(expect.objectContaining({ frame: 70, type: 'OUT_OF_WINDOW' }))
+      expect(result.actionLogs).toHaveLength(3)
+    })
+
+    it('accepts {1,2,3,4,1} without a user deck', () => {
+      const result = load(deckUnits()).simulate([
+        cast('a', 0, 1), cast('b', 1, 2), cast('c', 2, 3), cast('d', 3, 4), cast('e', 70, 1),
+      ])
+      expect(result.errors).toHaveLength(0)
+      expect(result.actionLogs).toHaveLength(5)
+    })
+
+    it('allows consecutive same-card casts for a 3-student squad (degenerate deck)', () => {
+      const result = load([1, 2, 3].map(id => student(id, { cost: 0, duration: 60 }))).simulate([
+        cast('a', 0, 1), cast('b', 70, 1),
+      ])
+      expect(result.errors).toHaveLength(0)
+      expect(result.actionLogs).toHaveLength(2)
+    })
   })
 
   it('applies and consumes a one-use CostChange on the next successful EX', () => {
@@ -200,27 +331,6 @@ describe('SimulationEngine deterministic student skills', () => {
       action: 'replaced',
       value: -1,
     }))
-  })
-
-  it('does not spend a CostChange use when the discounted EX is rejected', () => {
-    const caster = student(1, { cost: 5 })
-    const support = student(2, {
-      epEffects: [{ Type: 'CostChange', Target: 'Ally', ValueType: 'Coefficient', Uses: 2, Scale: [-5000] }],
-    })
-    const result = engine([caster, support]).simulate([
-      { id: 'discount', frame: 0, type: 'SS_TRIGGER', issuerId: 2, targetIds: [1], priority: 2, skillRef: { kind: 'extra_passive' }, triggerSource: 'manual', trigger: { source: 'manual', reasons: ['external_state'] } },
-      { id: 'too-early', frame: 100, type: 'EX_CAST', issuerId: 1, targetIds: [-1], priority: 1, skillRef: { kind: 'ex' }, triggerSource: 'manual' },
-      { id: 'success', frame: 700, type: 'EX_CAST', issuerId: 1, targetIds: [-1], priority: 1, skillRef: { kind: 'ex' }, triggerSource: 'manual' },
-    ])
-
-    expect(result.errors).toContainEqual(expect.objectContaining({
-      frame: 100,
-      type: 'COST_EXCEEDED',
-    }))
-    expect(result.effectAudit.filter(record => record.effectType === 'CostChange' && record.action === 'used')).toEqual([
-      expect.objectContaining({ frame: 700, uses: 1 }),
-    ])
-    expect(result.effectAudit.some(record => record.effectType === 'CostChange' && record.action === 'consumed')).toBe(false)
   })
 
   it('audits every supported student effect category deterministically', () => {

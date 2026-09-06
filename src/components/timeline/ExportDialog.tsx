@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { useI18n } from '../../i18n'
-import { exportNaturalLanguage, exportCostBased, encodeShareCode } from '../../utils/planExport'
+import { exportNaturalLanguage, exportCostBased } from '../../utils/planExport'
+import { exportPlanSnapshot } from '../../utils/planTransfer'
+import { currentPlanSnapshot } from '../../stores/currentPlan'
+import { useBossStore } from '../../stores/useBossStore'
 
 interface ExportDialogProps {
   onClose: () => void
@@ -14,7 +17,10 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
   const { t } = useI18n()
   const lanes = useTimelineStore((s) => s.lanes)
   const squadSlots = useSquadStore((s) => s.config.slots)
-  const deckOrder = useSquadStore((s) => s.deckOrder)
+  useSquadStore(s => s.deckOrder)
+  useBossStore(s => s)
+  useTimelineStore(s => s.frameLimit)
+  useTimelineStore(s => s.suggestions)
   const overlayRef = useRef<HTMLDivElement>(null)
   const [mode, setMode] = useState<ExportMode>('natural')
 
@@ -30,12 +36,14 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const text = useMemo(() => {
-    if (mode === 'natural') return exportNaturalLanguage(lanes)
-    if (mode === 'natural_cost') return exportCostBased(lanes)
-    const result = encodeShareCode(lanes, 0, 5, 'LightArmor', 0, deckOrder ?? undefined, squadSlots)
-    return result.code
-  }, [mode, lanes, deckOrder, squadSlots])
+  const output = (() => {
+    try {
+      if (mode === 'natural') return { text: exportNaturalLanguage(lanes) }
+      if (mode === 'natural_cost') return { text: exportCostBased(lanes, 'normal', squadSlots) }
+      return { text: exportPlanSnapshot(currentPlanSnapshot()).code }
+    } catch (error) { return { text: '', error: error instanceof Error ? error.message : '无法导出' } }
+  })()
+  const text = output.text
 
   const handleCopy = () => {
     if (text) navigator.clipboard.writeText(text)
@@ -59,6 +67,8 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
     >
       <div className="rounded-xl border shadow-2xl w-[520px] max-h-[80vh] flex flex-col" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+        {mode === 'share' && <p className="p-3 text-xs" style={{ color: 'var(--text-secondary)' }}>分享码 v5 会保存技能等级、模拟时长和自动 NS 设置；旧客户端无法保证重放一致。</p>}
+        {output.error && <p role="alert" className="p-3 text-xs text-red-400">{output.error}</p>}
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
           <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{t.timeline.export}</h3>
@@ -87,6 +97,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
             <div className="flex-1" />
             <button
               onClick={handleCopy}
+              disabled={!text}
               className="px-3 py-1 rounded border text-xs"
               style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
             >
@@ -94,6 +105,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
             </button>
             <button
               onClick={handleDownload}
+              disabled={!text}
               className="px-3 py-1 rounded border text-xs"
               style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
             >

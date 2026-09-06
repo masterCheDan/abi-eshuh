@@ -1,12 +1,13 @@
 import { useEffect } from 'react'
 import { useStudentStore } from './stores/useStudentStore'
-import { useSquadStore } from './stores/useSquadStore'
+import { restoreFromStorage } from './stores/squadTimeline'
 import { useSimulationStore } from './stores/useSimulationStore'
 import { useThemeStore, type ThemeMode } from './stores/useThemeStore'
 import { Timeline } from './components/timeline/Timeline'
 import { EventLog } from './components/timeline/EventLog'
 import { EffectAuditPanel } from './components/timeline/EffectAuditPanel'
 import { SquadPanel } from './components/squad/SquadPanel'
+import { NsSchedulingPanel } from './components/squad/NsSchedulingPanel'
 import { CardOrderEditor } from './components/squad/CardOrderEditor'
 import { SkillPanel } from './components/skill-panel/SkillPanel'
 import { BossPanel } from './components/boss-panel/BossPanel'
@@ -28,7 +29,7 @@ function AppContent() {
 
   useEffect(() => {
     loadStudents().then(() => {
-      useSquadStore.getState().restoreFromStorage(getStudent)
+      restoreFromStorage(getStudent)
       // 初始推演
       useSimulationStore.getState().tick()
     })
@@ -76,6 +77,7 @@ function AppContent() {
         <aside className="shrink-0 flex flex-col gap-3 overflow-y-auto" style={{ width: 'clamp(400px, 28vw, 580px)' }}>
           <BossPanel />
           <SquadPanel />
+          <NsSchedulingPanel />
           <CardOrderEditor />
           <SkillPanel />
         </aside>

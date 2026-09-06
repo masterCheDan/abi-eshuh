@@ -8,7 +8,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import type { SimulationError } from '../../engine/model/types'
+import type { SimulationError } from '../../engine'
 import { useI18n, tpl } from '../../i18n'
 
 interface SimulationErrorPanelProps {
@@ -23,6 +23,7 @@ const ERROR_TYPE_COLORS: Record<string, string> = {
     OUT_OF_WINDOW: 'var(--warn)',
     COOLDOWN: 'var(--accent-2)',
     INVALID_TARGET: '#a78bfa',
+    INVALID_TRIGGER: 'var(--warn)',
 }
 
 function frameToTime(totalFrames: number): string {
@@ -137,9 +138,9 @@ export function SimulationErrorPanel({
                                 >
                                     {label}
                                 </span>
-                                <span className="text-[10px] truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
+                                {desc !== label && <span className="text-[10px] truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
                                     {desc}
-                                </span>
+                                </span>}
                                 {err.issuerId > 0 && (
                                     <span className="text-[9px] shrink-0" style={{ color: 'var(--text-muted)' }}>
                                         ID:{err.issuerId}

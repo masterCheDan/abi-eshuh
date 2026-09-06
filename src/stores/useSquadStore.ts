@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type { Student } from '../types/student'
 import type { SquadConfig, SquadSlot, SquadMode } from '../types/squad'
-import { useTimelineStore } from './useTimelineStore'
 import {
   defaultStudentRank,
   normalizeStudentRank,
@@ -21,10 +20,11 @@ interface SquadSnapshot {
     ssLevel: number
     starLevel?: number
     uniqueWeaponLevel?: number
+    gearLevel?: 0 | 1 | 2
   }[]
 }
 
-function loadSnapshot(): SquadSnapshot | null {
+export function loadSnapshot(): SquadSnapshot | null {
   try {
     const raw = localStorage.getItem(LS_KEY)
     if (!raw) return null
@@ -43,6 +43,7 @@ function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
       ssLevel: s.ssLevel,
       starLevel: s.starLevel,
       uniqueWeaponLevel: s.uniqueWeaponLevel,
+      gearLevel: s.gearLevel,
     })),
   }
   localStorage.setItem(LS_KEY, JSON.stringify(data))
@@ -52,10 +53,10 @@ function saveSnapshot(mode: SquadMode, slots: SquadSlot[]): void {
 function createNormalSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0, gearLevel: 1 })
   }
   for (let i = 0; i < 2; i++) {
-    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
+    slots.push({ index: 4 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0, gearLevel: 1 })
   }
   return slots
 }
@@ -64,10 +65,10 @@ function createNormalSlots(): SquadSlot[] {
 function createTotalAssaultSlots(): SquadSlot[] {
   const slots: SquadSlot[] = []
   for (let i = 0; i < 6; i++) {
-    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
+    slots.push({ index: i, slotType: 'Main', label: `STRIKER ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0, gearLevel: 1 })
   }
   for (let i = 0; i < 4; i++) {
-    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0 })
+    slots.push({ index: 6 + i, slotType: 'Support', label: `SPECIAL ${i + 1}`, student: null, locked: false, exLevel: 5, nsLevel: 10, ssLevel: 10, starLevel: 0, uniqueWeaponLevel: 0, gearLevel: 1 })
   }
   return slots
 }
@@ -88,24 +89,24 @@ interface SquadStore {
   /** 初始牌序 (slotIndex 数组). null=不启用牌序验证 */
   deckOrder: number[] | null
   /** 设置牌序 */
-  setDeckOrder: (order: number[]) => void
+  setDeckOrder: (order: number[] | null) => void
   /** 启用/禁用牌序验证 */
   toggleDeckOrder: () => void
 
-  /** 从 localStorage 恢复编队（需在 students 加载后调用） */
-  restoreFromStorage: (getStudent: (id: number) => Student | null) => void
-  /** 切换队伍模式 */
-  setMode: (mode: SquadMode) => void
-  /** 分配学生到指定位置 */
-  assignStudent: (slotIndex: number, student: Student) => void
-  /** 从位置移除学生 */
-  removeStudent: (slotIndex: number) => void
+  /** 切换队伍模式（仅改配置；时间轴同步由编排层 squadTimeline 负责） */
+  setModeConfig: (mode: SquadMode) => void
+  /** 分配学生到指定位置（仅改配置；时间轴同步由编排层 squadTimeline 负责） */
+  assignSlotConfig: (slotIndex: number, student: Student) => void
+  /** 从位置移除学生（仅改配置；时间轴同步由编排层 squadTimeline 负责） */
+  removeSlotConfig: (slotIndex: number) => void
   /** 设置某位置的技能等级 */
   setSkillLevel: (slotIndex: number, skill: 'ex' | 'ns' | 'ss', level: number) => void
   /** 设置某位置的养成星级 */
   setStarLevel: (slotIndex: number, level: number) => void
   /** 设置某位置的专武等级（0=未解锁） */
   setUniqueWeaponLevel: (slotIndex: number, level: number) => void
+  /** 设置某位置的爱用品状态（0=未装备，1=T1，2=T2） */
+  setGearLevel: (slotIndex: number, level: 0 | 1 | 2) => void
   /** 检查某个位置是否可用 */
   isSlotAvailable: (slotIndex: number) => boolean
   /** 获取空余的前排位置数 */
@@ -180,35 +181,22 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
       },
     })),
 
-  restoreFromStorage: (getStudent) => {
-    const snap = loadSnapshot()
-    if (!snap) return
-    const currentMode = get().config.mode
-    if (snap.mode !== currentMode) {
-      get().setMode(snap.mode)
-    }
-    for (const { index, studentId, exLevel, nsLevel, ssLevel, starLevel, uniqueWeaponLevel } of snap.slots) {
-      const student = getStudent(studentId)
-      if (student) {
-        get().assignStudent(index, student)
-        get().setSkillLevel(index, 'ex', exLevel ?? 5)
-        get().setSkillLevel(index, 'ns', nsLevel ?? 10)
-        get().setSkillLevel(index, 'ss', ssLevel ?? 10)
-        get().setStarLevel(index, starLevel ?? student.StarGrade)
-        get().setUniqueWeaponLevel(index, uniqueWeaponLevel ?? 0)
-      }
-    }
-  },
+  setGearLevel: (slotIndex, level) =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        slots: state.config.slots.map((slot) => slot.index === slotIndex ? { ...slot, gearLevel: level } : slot),
+      },
+    })),
 
-  setMode: (mode) => {
+  setModeConfig: (mode) => {
     const newSlots = mode === 'normal' ? createNormalSlots() : createTotalAssaultSlots()
     set({
       config: { mode, slots: newSlots },
     })
-    // 同步重设时间轴轨道
-    useTimelineStore.getState().initLanes(mode)
   },
-  assignStudent: (slotIndex, student) =>
+
+  assignSlotConfig: (slotIndex, student) =>
     set((state) => {
       const slot = state.config.slots[slotIndex]
       if (!slot) return state
@@ -223,21 +211,15 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
         }
       )
 
-      // 同步分配到时间轴对应 slot
-      useTimelineStore.getState().assignSlot(slotIndex, student)
-
       return {
         config: { ...state.config, slots: newSlots },
       }
     }),
 
-  removeStudent: (slotIndex) =>
+  removeSlotConfig: (slotIndex) =>
     set((state) => {
       const slot = state.config.slots[slotIndex]
       if (!slot || !slot.student) return state
-
-      // 从时间轴移除（同时清空技能）
-      useTimelineStore.getState().unassignSlot(slotIndex)
 
       const newSlots = state.config.slots.map((s) =>
         s.index === slotIndex
@@ -273,6 +255,7 @@ export const useSquadStore = create<SquadStore>((set, get) => ({
     set((state) => ({
       config: {
         ...state.config,
+        mode: slots.length > 6 ? 'total_assault' : 'normal',
         slots: slots.map((slot) => {
           if (!slot.student) return { ...slot, starLevel: 0, uniqueWeaponLevel: 0 }
           const rank = normalizeStudentRank(

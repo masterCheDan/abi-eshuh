@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { setMode } from '../../stores/squadTimeline'
 import { SquadSlotComponent } from './SquadSlot'
 import type { SquadMode } from '../../types/squad'
 import { useI18n } from '../../i18n'
@@ -8,7 +9,6 @@ export function SquadPanel() {
   const { t } = useI18n()
   const [collapsed, setCollapsed] = useState(false)
   const mode = useSquadStore((s) => s.config.mode)
-  const setMode = useSquadStore((s) => s.setMode)
   const slots = useSquadStore((s) => s.config.slots)
 
   const mainSlots = slots.filter((s) => s.slotType === 'Main')

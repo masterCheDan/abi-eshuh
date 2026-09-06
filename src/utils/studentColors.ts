@@ -3,8 +3,6 @@
  * 根据 slotIndex 分配固定色相，技能块 / Buff 条均从此派生
  */
 
-import { useThemeStore } from '../stores/useThemeStore'
-
 /** 10 种互不相同的色相（对应最多 10 个编队位置） */
 const STUDENT_HUES = [
   { hue: 210, name: 'blue' },       // 前排 1
@@ -41,8 +39,7 @@ export interface StudentSkillColors {
 }
 
 /** 主题相关的色阶参数：暗色霓虹感，亮色加深防洗白 */
-function themeLevels() {
-  const dark = useThemeStore.getState().resolved === 'dark'
+function themeLevels(dark: boolean) {
   return dark
     ? { sat: 78, preL: 55, activeL: 55, afterL: 50, borderL: 66, alphaK: 1 }
     : { sat: 85, preL: 48, activeL: 48, afterL: 45, borderL: 38, alphaK: 0.85 }
@@ -54,6 +51,7 @@ export function studentSkillStyles(
   opacity = 1,
   /** 伤害技能强调生效段，辅助技能强调前摇段 */
   damage = false,
+  dark: boolean,
 ): {
   preStyle: React.CSSProperties
   activeStyle: React.CSSProperties
@@ -61,7 +59,7 @@ export function studentSkillStyles(
   labelClass: string
 } {
   const h = getStudentHue(slotIndex)
-  const lv = themeLevels()
+  const lv = themeLevels(dark)
   const heavy = { alpha: 0.65, border: true }
   const light = { alpha: 0.25, border: false }
   const vLight = { alpha: 0.12, border: false }
@@ -88,7 +86,7 @@ export function studentSkillStyles(
 }
 
 /** 从 slotIndex 生成 Buff 条样式 */
-export function studentBuffStyle(slotIndex: number, overridden = false): React.CSSProperties {
+export function studentBuffStyle(slotIndex: number, overridden = false, dark: boolean): React.CSSProperties {
   if (overridden) {
     return {
       backgroundColor: 'hsla(0, 0%, 40%, 0.18)',
@@ -96,7 +94,7 @@ export function studentBuffStyle(slotIndex: number, overridden = false): React.C
     }
   }
   const h = getStudentHue(slotIndex)
-  const lv = themeLevels()
+  const lv = themeLevels(dark)
   return {
     backgroundColor: `hsla(${h}, ${lv.sat}%, ${lv.activeL}%, ${0.35 * lv.alphaK})`,
     borderLeft: `2px solid hsl(${h}, ${lv.sat}%, ${lv.borderL}%)`,

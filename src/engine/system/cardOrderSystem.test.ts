@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import studentData from '../../data/students.min.json' with { type: 'json' }
 import type { Student, StudentDB } from '../../types/student'
 import type { Formation, Intent, SkillRef } from '../model/types'
-import { CardOrderSystem } from './cardOrderSystem'
-import { EX_CARD_DESCRIPTION_PATTERN, EX_CARD_RULES } from './exCardRules'
+import { CardOrderSystem, inferGreedyDeck } from './cardOrderSystem'
+import { rules } from '../../domain/rules/GameRules'
 
 const database = studentData as unknown as StudentDB
 
@@ -100,6 +100,36 @@ describe('deterministic EX hand and draw pile', () => {
     expect(cards.snapshot()).toEqual(before)
   })
 
+  it('rejects the illegal sequence {1,1}', () => {
+    const cards = system([1, 2, 3, 4, 5, 6])
+    commit(cards, 0, 1)
+    expect(cards.preparePlay(0, { kind: 'ex' }, intent(1))).toBe('card_order_violation')
+  })
+
+  it('rejects the illegal sequence {1,2,1}', () => {
+    const cards = system([1, 2, 3, 4, 5, 6])
+    commit(cards, 0, 1)
+    commit(cards, 1, 2)
+    expect(cards.preparePlay(0, { kind: 'ex' }, intent(1))).toBe('card_order_violation')
+  })
+
+  it('rejects the illegal sequence {1,2,3,1}', () => {
+    const cards = system([1, 2, 3, 4, 5, 6])
+    commit(cards, 0, 1)
+    commit(cards, 1, 2)
+    commit(cards, 2, 3)
+    expect(cards.preparePlay(0, { kind: 'ex' }, intent(1))).toBe('card_order_violation')
+  })
+
+  it('accepts the legal sequence {1,2,3,4,1}', () => {
+    const cards = system([1, 2, 3, 4, 5, 6])
+    commit(cards, 0, 1)
+    commit(cards, 1, 2)
+    commit(cards, 2, 3)
+    commit(cards, 3, 4)
+    expect(cards.preparePlay(0, { kind: 'ex' }, intent(1))).not.toBe('card_order_violation')
+  })
+
   it('tracks swimsuit Hanako gauge and consumes a count for self-redraw', () => {
     const cards = system([10074, 2, 3, 4, 5, 6])
     commit(cards, 1, 2)
@@ -157,6 +187,84 @@ describe('deterministic EX hand and draw pile', () => {
     expect(cards.snapshot()?.hand[0]?.skillRef).toEqual({ kind: 'extra_ex', extraSkillId: 'CH0280Ex02' })
     cards.advance(2_200)
     expect(cards.snapshot()?.hand[0]?.skillRef).toEqual({ kind: 'ex' })
+  })
+
+  it('redraws swimsuit Shun as the transformed card and returns it to the tail after 9 seconds', () => {
+    const cards = system([10143, 2, 3, 4, 5, 6])
+    const tone: SkillRef = { kind: 'extra_ex', extraSkillId: 'CH0355_01Ex02' }
+    expect(cards.preparePlay(0, tone, intent(10143))).toBe('extra EX is not available in the current card state')
+
+    commit(cards, 0, 10143, { kind: 'ex' }, 100)
+    expect(cards.snapshot()?.hand[0]).toEqual(expect.objectContaining({
+      slotIndex: 0,
+      skillRef: tone,
+    }))
+
+    cards.advance(369)
+    expect(cards.snapshot()?.hand[0]?.skillRef).toEqual(tone)
+    cards.advance(370)
+    expect(cards.snapshot()?.hand[0]?.skillRef).toEqual({ kind: 'ex' })
+    expect(cards.snapshot()?.drawPile.at(-1)?.slotIndex).toBe(0)
+  })
+
+  it('consumes swimsuit Shun transformed EX and clears the transform on timeout', () => {
+    const cards = system([10143, 2, 3, 4, 5, 6])
+    commit(cards, 0, 10143, { kind: 'ex' }, 100)
+    const transformed = cards.preparePlay(0, { kind: 'ex' }, intent(10143))
+    if (typeof transformed === 'string') throw new Error(transformed)
+    expect(transformed.skillRef).toEqual({ kind: 'extra_ex', extraSkillId: 'CH0355_01Ex02' })
+    cards.commitPlay(transformed, intent(10143), 200)
+    expect(cards.snapshot()?.drawPile.at(-1)?.slotIndex).toBe(0)
+
+    cards.advance(400)
+    expect(cards.snapshot()?.drawPile.find(card => card.slotIndex === 0)?.skillRef).toEqual({ kind: 'ex' })
+  })
+
+  it('permanently transforms swimsuit Ibuki EX after the first cast', () => {
+    const cards = system([20060, 2, 3, 4, 5, 6])
+    const transformed: SkillRef = { kind: 'extra_ex', extraSkillId: 'CH0347Ex02' }
+    expect(cards.preparePlay(0, transformed, intent(20060))).toBe('extra EX is not available in the current card state')
+
+    commit(cards, 0, 20060, { kind: 'ex' }, 100)
+    expect(cards.snapshot()?.hand[0]).toEqual(expect.objectContaining({
+      slotIndex: 0,
+      skillRef: transformed,
+    }))
+
+    const plan = cards.preparePlay(0, { kind: 'ex' }, intent(20060))
+    if (typeof plan === 'string') throw new Error(plan)
+    expect(plan.skillRef).toEqual(transformed)
+    cards.commitPlay(plan, intent(20060), 200)
+    expect(cards.snapshot()?.drawPile.at(-1)?.slotIndex).toBe(0)
+
+    cards.advance(50_000)
+    expect(cards.snapshot()?.drawPile.find(card => card.slotIndex === 0)?.skillRef).toEqual(transformed)
+  })
+
+  it('records friend-marker targets at the first cast and keeps them for the battle', () => {
+    const cards = system([20060, 2, 3, 4, 5, 6])
+    commit(cards, 0, 20060, { kind: 'ex' }, 100, [2, 3])
+    expect(cards.markerTargetsOf(0)).toEqual([2, 3])
+    expect(cards.snapshot()?.hand[0]).toEqual(expect.objectContaining({
+      slotIndex: 0,
+      skillRef: { kind: 'extra_ex', extraSkillId: 'CH0347Ex02' },
+    }))
+  })
+
+  it('accrues marker counts from marked targets and activates at the threshold', () => {
+    const cards = system([20060, 2, 3, 4, 5, 6])
+    commit(cards, 0, 20060, { kind: 'ex' }, 100, [2, 3])
+    cards.observeMarkerAllyEx(1, 200)
+    cards.observeMarkerAllyEx(1, 300)
+    cards.observeMarkerAllyEx(1, 400)
+    cards.observeMarkerAllyEx(1, 500)
+    expect(cards.audit).toContainEqual(expect.objectContaining({ detail: 'marker_count:12' }))
+    expect(cards.audit).toContainEqual(expect.objectContaining({ detail: 'marker_active' }))
+    expect(cards.markerActive(0)).toBe(true)
+
+    // 激活后不再累加
+    cards.observeMarkerAllyEx(1, 600)
+    expect(cards.audit.some(record => record.detail === 'marker_count:15')).toBe(false)
   })
 
   it('uses 4/4/6/6/10 Cost during swimsuit Mika rapid fire and moves the card to tail', () => {
@@ -251,9 +359,41 @@ describe('EX card-rule data coverage', () => {
     const discovered = new Set<number>()
     for (const student of Object.values(database)) {
       const variants = [student.Skills.E, ...(student.Skills.E.ExtraSkills ?? [])]
-      if (variants.some(skill => EX_CARD_DESCRIPTION_PATTERN.test(skill.Desc ?? ''))) discovered.add(student.Id)
+      if (variants.some(skill => rules.card.descriptionPattern.test(skill.Desc ?? ''))) discovered.add(student.Id)
     }
     expect([...discovered].sort((left, right) => left - right))
-      .toEqual(Object.keys(EX_CARD_RULES).map(Number).sort((left, right) => left - right))
+      .toEqual(Object.keys(rules.card.rules).map(Number).sort((left, right) => left - right))
+  })
+})
+
+describe('inferGreedyDeck', () => {
+  it('orders distinct EX casters by first cast frame then appends the rest in formation order', () => {
+    const intents = [
+      { ...intent(4), frame: 10 },
+      { ...intent(2), frame: 0 },
+      { ...intent(2), frame: 5 },
+      { ...intent(6), frame: 7 },
+    ]
+    expect(inferGreedyDeck([1, 2, 3, 4, 5, 6], intents)).toEqual([1, 5, 3, 0, 2, 4])
+  })
+
+  it('breaks same-frame first casts by slot index', () => {
+    const intents = [
+      { ...intent(3), frame: 0 },
+      { ...intent(1), frame: 0 },
+    ]
+    expect(inferGreedyDeck([1, 2, 3], intents)).toEqual([0, 2, 1])
+  })
+
+  it('ignores non-EX intents and unknown issuers', () => {
+    const intents = [
+      { ...intent(1), type: 'SS_TRIGGER' as const, frame: 0 },
+      { ...intent(99), frame: 0 },
+    ]
+    expect(inferGreedyDeck([1, 2], intents)).toEqual([0, 1])
+  })
+
+  it('returns formation order when there are no EX intents', () => {
+    expect(inferGreedyDeck([1, null, 3], [])).toEqual([0, 2])
   })
 })

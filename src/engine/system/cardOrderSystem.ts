@@ -8,7 +8,8 @@ import type {
   SkillRef,
   StudentRuntimeState,
 } from '../model/types'
-import { EX_CARD_RULES } from './exCardRules'
+import { rules } from '../../domain/rules/GameRules'
+import type { CardMechanicState, CardPlayContext } from '../../domain/rules/GameRules'
 
 interface SlotCardState {
   overrideRef?: SkillRef
@@ -16,7 +17,13 @@ interface SlotCardState {
   copyUses: number
   hinaStage?: number
   hinaExpiresAt?: number
-  neruExpiresAt?: number
+  /** 机制驱动的卡面变换超时（transform mechanic）。 */
+  mechanicExpiresAt?: number
+  mechanicTailOnExpiry?: boolean
+  /** friend-marker 机制：首次施放选定的目标槽位。 */
+  markerTargets: number[]
+  markerCount: number
+  markerActive: boolean
   mikaRapidExpiresAt?: number
   mikaAttackUses: number
   aliceEnergy: number
@@ -51,6 +58,18 @@ export interface CardPlayResult {
   waterBuffStudentIds: number[]
 }
 
+/** 莉音复制路径（applyCopiedExecutorState）中 copied 行为执行时的上下文。 */
+interface CopiedCardPlayContext {
+  slot: number
+  studentId: number
+  skillId: string | undefined
+  skillRef: SkillRef
+  frame: number
+  state: CardMechanicState
+  record(skillRef: SkillRef, action: EffectAuditRecord['action'], detail: string): void
+  moveToTail(): void
+}
+
 function extraId(ref: SkillRef): string | undefined {
   return ref.kind === 'extra_ex' ? ref.extraSkillId : undefined
 }
@@ -61,6 +80,31 @@ function sameSkillRef(left: SkillRef, right: SkillRef): boolean {
   return left.extraSkillId != null || right.extraSkillId != null
     ? left.extraSkillId === right.extraSkillId
     : left.extraSkillIndex === right.extraSkillIndex
+}
+
+/**
+ * 用户未自定义初始牌序时的贪心推断：
+ * 按 EX 施放者的首次施放帧排序（同帧按 slotIndex 兜底），
+ * 再按编队顺序补全未施放的在编槽位，得到完整初始牌库。
+ *
+ * 贪心最优性：前 windowSize 个不同施放者恰好构成初始手牌，首施放必合法；
+ * 重复施放合法性与初始牌序无关（队列模型下固定需要 N−windowSize 次间隔），
+ * 因此该牌库既不会放过真实非法序列，也不会误伤合法序列。
+ */
+export function inferGreedyDeck(slots: Array<number | null>, intents: Intent[]): number[] {
+  const firstFrame = new Map<number, number>()
+  for (const intent of intents) {
+    if (intent.type !== 'EX_CAST') continue
+    const slot = slots.indexOf(intent.issuerId)
+    if (slot < 0) continue
+    const prev = firstFrame.get(slot)
+    if (prev == null || intent.frame < prev) firstFrame.set(slot, intent.frame)
+  }
+  const ordered = [...firstFrame.entries()]
+    .sort((left, right) => left[1] - right[1] || left[0] - right[0])
+    .map(([slot]) => slot)
+  const occupied = slots.flatMap((studentId, slot) => studentId == null ? [] : [slot])
+  return [...ordered, ...occupied.filter(slot => !firstFrame.has(slot))]
 }
 
 /**
@@ -102,9 +146,15 @@ export class CardOrderSystem {
         copyUses: 0,
         mikaAttackUses: 0,
         aliceEnergy: 0,
+        markerTargets: [],
+        markerCount: 0,
+        markerActive: false,
         pinned: false,
       })
-      if (formation.slots[slot] === 10074) this.water.set(slot, { gauge: 0, counts: 0 })
+      const mechanic = rules.mechanics.cardMechanic(formation.slots[slot] ?? -1)
+      if (mechanic?.kind === 'behavior' && mechanic.waterGauge) {
+        this.water.set(slot, { gauge: 0, counts: 0 })
+      }
     }
   }
 
@@ -129,10 +179,16 @@ export class CardOrderSystem {
         this.moveToTail(slot)
         this.record(frame, slot, { kind: 'ex' }, 'expired', 'fixed_sequence:timeout')
       }
-      if (state.neruExpiresAt != null && state.neruExpiresAt <= frame) {
-        state.neruExpiresAt = undefined
+      if (state.mechanicExpiresAt != null && state.mechanicExpiresAt <= frame) {
+        state.mechanicExpiresAt = undefined
         state.overrideRef = undefined
-        this.record(frame, slot, { kind: 'ex' }, 'expired', 'transform:timeout')
+        if (state.mechanicTailOnExpiry) {
+          state.mechanicTailOnExpiry = false
+          this.moveToTail(slot)
+          this.record(frame, slot, { kind: 'ex' }, 'expired', 'transform:timeout_to_tail')
+        } else {
+          this.record(frame, slot, { kind: 'ex' }, 'expired', 'transform:timeout')
+        }
       }
       if (state.mikaRapidExpiresAt != null && state.mikaRapidExpiresAt <= frame) {
         state.mikaRapidExpiresAt = undefined
@@ -147,7 +203,8 @@ export class CardOrderSystem {
   /** Some card states end from structured runtime events rather than time. */
   syncRuntime(frame: number, runtimes: Map<number, StudentRuntimeState>): void {
     for (const [slot, state] of this.states) {
-      if (this.formation.slots[slot] !== 10086 || state.hinaExpiresAt == null) continue
+      const mechanic = rules.mechanics.cardMechanic(this.formation.slots[slot] ?? -1)
+      if (mechanic?.kind !== 'behavior' || !mechanic.ccInterruptsSequence || state.hinaExpiresAt == null) continue
       const runtime = runtimes.get(slot)
       if (!runtime || runtime.controlledUntil <= frame) continue
       state.hinaExpiresAt = undefined
@@ -190,7 +247,7 @@ export class CardOrderSystem {
     }
 
     const allowExtraEx = this.allowsExtraEx(ownerSlot, executorSlot, skillRef, intent, copied)
-    if (skillRef.kind === 'extra_ex' && !allowExtraEx && EX_CARD_RULES[ownerStudentId]) {
+    if (skillRef.kind === 'extra_ex' && !allowExtraEx && rules.card.has(ownerStudentId)) {
       return 'extra EX is not available in the current card state'
     }
 
@@ -208,14 +265,216 @@ export class CardOrderSystem {
   }
 
   effectiveBaseCost(plan: CardPlayPlan, resolvedBaseCost: number): number {
-    if (plan.executorStudentId === 10122 && extraId(plan.skillRef) === 'CH0294Ex02') {
+    const mechanic = rules.mechanics.cardMechanic(plan.executorStudentId)
+    const escalation = mechanic?.kind === 'behavior' ? mechanic.costEscalation : undefined
+    if (escalation && extraId(plan.skillRef) === escalation.skillId) {
       const uses = this.states.get(plan.executorSlot)?.mikaAttackUses ?? 0
       if ((this.states.get(plan.executorSlot)?.mikaRapidExpiresAt ?? 0) > 0) {
-        if (uses >= 4) return 10
-        if (uses >= 2) return 6
+        let escalated: number | undefined
+        for (const tier of escalation.tiers) {
+          if (uses >= tier.minUses) escalated = tier.cost
+        }
+        if (escalated != null) return escalated
       }
     }
     return Math.max(0, resolvedBaseCost + plan.baseCostAdjustment)
+  }
+
+  /** behavior 机制的处理器（单一注册位置，按 behaviorId 分发）。 */
+  private readonly behaviorHandlers: Readonly<Record<string, (ctx: CardPlayContext) => void>> = {
+    'water-gauge': (ctx) => {
+      const counts = ctx.waterCounts(ctx.slot)
+      if (counts != null && counts > 0) {
+        ctx.spendWaterCount(ctx.slot)
+        ctx.keepInHand()
+        ctx.record(ctx.skillRef, 'used', `water_count:${counts - 1}:self_redraw`)
+      } else {
+        ctx.consumeNormally()
+      }
+    },
+    'fixed-sequence': (ctx) => {
+      const sequence = ['CH0230Ex02', 'CH0230Ex03', 'CH0230Ex04']
+      if (ctx.skillId === 'CH0230Ex04') {
+        ctx.state.hinaStage = undefined
+        ctx.state.hinaExpiresAt = undefined
+        ctx.state.overrideRef = undefined
+        ctx.state.pinned = false
+        ctx.consumeNormally()
+        ctx.record({ kind: 'extra_ex', extraSkillId: ctx.skillId }, 'consumed', 'fixed_sequence:complete')
+        return
+      }
+      const nextStage = ctx.skillId == null ? 0 : sequence.indexOf(ctx.skillId) + 1
+      if (nextStage < 0 || nextStage >= sequence.length) {
+        ctx.consumeNormally()
+        return
+      }
+      ctx.state.hinaStage = nextStage
+      ctx.state.hinaExpiresAt = ctx.frame + 300
+      ctx.state.overrideRef = { kind: 'extra_ex', extraSkillId: sequence[nextStage] }
+      ctx.state.pinned = true
+      ctx.keepInHand()
+      ctx.record(ctx.state.overrideRef, 'applied', `fixed_sequence:${nextStage + 1}:expires:${ctx.state.hinaExpiresAt}`)
+    },
+    'rapid-fire': (ctx) => {
+      if (ctx.skillId === 'CH0294Ex01') {
+        ctx.state.mikaRapidExpiresAt = ctx.frame + 900
+        ctx.state.mikaAttackUses = 0
+        ctx.state.pinned = true
+        ctx.keepInHand()
+        ctx.record({ kind: 'extra_ex', extraSkillId: ctx.skillId }, 'applied', `rapid_fire:start:expires:${ctx.state.mikaRapidExpiresAt}`)
+        return
+      }
+      if (ctx.skillId === 'CH0294Ex03') {
+        ctx.state.mikaRapidExpiresAt = undefined
+        ctx.state.mikaAttackUses = 0
+        ctx.state.pinned = false
+        ctx.consumeNormally()
+        ctx.record({ kind: 'extra_ex', extraSkillId: ctx.skillId }, 'consumed', 'rapid_fire:end_to_tail')
+        return
+      }
+      if (ctx.skillId === 'CH0294Ex02' && ctx.state.mikaRapidExpiresAt != null) {
+        ctx.state.mikaAttackUses++
+        ctx.state.pinned = true
+        ctx.keepInHand()
+        ctx.record({ kind: 'extra_ex', extraSkillId: ctx.skillId }, 'used', `rapid_fire:attack:${ctx.state.mikaAttackUses}:self_redraw`)
+        return
+      }
+      ctx.consumeNormally()
+    },
+    'charge-attack': (ctx) => {
+      if (ctx.skillId === 'CH0334Ex04') {
+        ctx.state.aliceEnergy = Math.min(2, ctx.state.aliceEnergy + 1)
+        ctx.keepInHand()
+        ctx.record(ctx.skillRef, 'applied', `energy:${ctx.state.aliceEnergy}:self_redraw`)
+      } else {
+        ctx.state.aliceEnergy = 0
+        ctx.consumeNormally()
+        if (ctx.skillId === 'CH0334Ex01') ctx.record(ctx.skillRef, 'consumed', 'energy:reset')
+      }
+    },
+    'riding-executor': (ctx) => {
+      ctx.consumeNormally()
+      if (ctx.skillId === 'CH0077RidingEx01') {
+        ctx.record(ctx.skillRef, 'applied', 'card_owner:ibuki:executor:toramaru')
+      }
+    },
+    'copy-target': (ctx) => {
+      ctx.keepInHand()
+      const targetId = ctx.targetIds[0]
+      const targetSlot = targetId == null ? -1 : ctx.resolveSlot(targetId)
+      if (targetSlot >= 0) {
+        ctx.pushPendingCopy(targetSlot, ctx.frame + 113)
+        ctx.record(ctx.skillRef, 'scheduled', `copy_at:${ctx.frame + 113}:target:${targetId}`)
+      }
+    },
+  }
+
+  /** copied 行为（莉音复制路径）的处理器，返回首选手牌位（通常为被复制者槽位）。 */
+  private readonly copiedBehaviorHandlers: Readonly<Record<string, (ctx: CopiedCardPlayContext) => number | undefined>> = {
+    'water-gauge-copied': (ctx) => {
+      const gauge = this.water.get(ctx.slot)
+      if (!gauge || gauge.counts <= 0) return undefined
+      gauge.counts--
+      ctx.record(ctx.skillRef, 'used', `water_count:${gauge.counts}:copied_self_redraw`)
+      return ctx.slot
+    },
+    'fixed-sequence-copied': (ctx) => {
+      const sequence = ['CH0230Ex02', 'CH0230Ex03', 'CH0230Ex04']
+      if (ctx.skillId === 'CH0230Ex04') {
+        ctx.state.hinaStage = undefined
+        ctx.state.hinaExpiresAt = undefined
+        ctx.state.overrideRef = undefined
+        ctx.state.pinned = false
+        ctx.moveToTail()
+        ctx.record({ kind: 'extra_ex', extraSkillId: ctx.skillId }, 'consumed', 'fixed_sequence:copied_complete')
+        return undefined
+      }
+      const nextStage = ctx.skillId == null ? 0 : sequence.indexOf(ctx.skillId) + 1
+      if (nextStage >= 0 && nextStage < sequence.length) {
+        ctx.state.hinaStage = nextStage
+        ctx.state.hinaExpiresAt = ctx.frame + 300
+        ctx.state.overrideRef = { kind: 'extra_ex', extraSkillId: sequence[nextStage] }
+        ctx.state.pinned = true
+        ctx.record(ctx.state.overrideRef, 'applied', `fixed_sequence:copied:${nextStage + 1}`)
+        return ctx.slot
+      }
+      return undefined
+    },
+    'transform-copied': (ctx) => {
+      if (ctx.skillId === 'CH0280Ex02') return undefined
+      ctx.state.overrideRef = { kind: 'extra_ex', extraSkillId: 'CH0280Ex02' }
+      ctx.state.mechanicExpiresAt = ctx.frame + 2_100
+      ctx.state.mechanicTailOnExpiry = false
+      ctx.record(ctx.skillRef, 'applied', 'transform:copied:CH0280Ex02')
+      return ctx.slot
+    },
+    'rapid-fire-copied': (ctx) => {
+      if (ctx.skillId === 'CH0294Ex01') {
+        ctx.state.mikaRapidExpiresAt = ctx.frame + 900
+        ctx.state.mikaAttackUses = 0
+        ctx.state.pinned = true
+        ctx.record(ctx.skillRef, 'applied', 'rapid_fire:copied_start')
+        return ctx.slot
+      }
+      if (ctx.skillId === 'CH0294Ex03') {
+        ctx.state.mikaRapidExpiresAt = undefined
+        ctx.state.mikaAttackUses = 0
+        ctx.state.pinned = false
+        ctx.moveToTail()
+        ctx.record(ctx.skillRef, 'consumed', 'rapid_fire:copied_end_to_tail')
+        return undefined
+      }
+      if (ctx.skillId === 'CH0294Ex02' && ctx.state.mikaRapidExpiresAt != null) {
+        ctx.state.mikaAttackUses++
+        ctx.state.pinned = true
+        ctx.record(ctx.skillRef, 'used', `rapid_fire:copied_attack:${ctx.state.mikaAttackUses}`)
+        return ctx.slot
+      }
+      return undefined
+    },
+    'charge-attack-copied': (ctx) => {
+      if (ctx.skillId === 'CH0334Ex04') {
+        ctx.state.aliceEnergy = Math.min(2, ctx.state.aliceEnergy + 1)
+        ctx.record(ctx.skillRef, 'applied', `energy:${ctx.state.aliceEnergy}:copied_self_redraw`)
+        return ctx.slot
+      }
+      if (ctx.skillId === 'CH0334Ex01') {
+        ctx.state.aliceEnergy = 0
+        ctx.record(ctx.skillRef, 'consumed', 'energy:copied_reset')
+      }
+      return undefined
+    },
+  }
+
+  private playContext(
+    plan: CardPlayPlan,
+    intent: Intent,
+    frame: number,
+    state: SlotCardState,
+    skillId: string | undefined,
+  ): CardPlayContext {
+    return {
+      slot: plan.ownerSlot,
+      studentId: plan.ownerStudentId,
+      skillId,
+      skillRef: plan.skillRef,
+      targetIds: intent.targetIds,
+      frame,
+      state: state as unknown as CardMechanicState,
+      keepInHand: () => this.keepInHand(plan.ownerSlot),
+      consumeNormally: (preferredDrawSlot?: number) => this.consumeNormally(plan.ownerSlot, preferredDrawSlot),
+      moveToTail: () => this.moveToTail(plan.ownerSlot),
+      record: (skillRef, action, detail) => this.record(frame, plan.ownerSlot, skillRef, action, detail),
+      resolveSlot: (studentId) => this.resolveSlot(studentId),
+      pushPendingCopy: (sourceSlot, atFrame) => this.pendingCopies.push({ frame: atFrame, ownerSlot: plan.ownerSlot, sourceSlot }),
+      waterCounts: (slot) => this.water.get(slot)?.counts,
+      spendWaterCount: (slot) => {
+        const gauge = this.water.get(slot)
+        if (!gauge || gauge.counts <= 0) return false
+        gauge.counts--
+        return true
+      },
+    }
   }
 
   commitPlay(plan: CardPlayPlan, intent: Intent, frame: number): CardPlayResult {
@@ -233,63 +492,37 @@ export class CardOrderSystem {
     }
 
     const skillId = extraId(plan.skillRef)
-    switch (plan.ownerStudentId) {
-      case 10074: {
-        const gauge = this.water.get(plan.ownerSlot)
-        if (gauge && gauge.counts > 0) {
-          gauge.counts--
-          this.keepInHand(plan.ownerSlot)
-          this.record(frame, plan.ownerSlot, plan.skillRef, 'used', `water_count:${gauge.counts}:self_redraw`)
-        } else {
-          this.consumeNormally(plan.ownerSlot)
-        }
-        break
-      }
-      case 10086:
-        this.commitDressHina(plan.ownerSlot, skillId, frame)
-        break
-      case 10111:
-        if (skillId === 'CH0280Ex02') {
-          this.consumeNormally(plan.ownerSlot)
-        } else {
-          state.overrideRef = { kind: 'extra_ex', extraSkillId: 'CH0280Ex02' }
-          state.neruExpiresAt = frame + 2_100
-          this.keepInHand(plan.ownerSlot)
-          this.record(frame, plan.ownerSlot, plan.skillRef, 'applied', 'transform:CH0280Ex02:self_redraw')
-        }
-        break
-      case 10122:
-        this.commitSwimsuitMika(plan.ownerSlot, skillId, frame)
-        break
-      case 10134:
-        if (skillId === 'CH0334Ex04') {
-          state.aliceEnergy = Math.min(2, state.aliceEnergy + 1)
-          this.keepInHand(plan.ownerSlot)
-          this.record(frame, plan.ownerSlot, plan.skillRef, 'applied', `energy:${state.aliceEnergy}:self_redraw`)
-        } else {
-          state.aliceEnergy = 0
-          this.consumeNormally(plan.ownerSlot)
-          if (skillId === 'CH0334Ex01') this.record(frame, plan.ownerSlot, plan.skillRef, 'consumed', 'energy:reset')
-        }
-        break
-      case 16014:
+    const mechanic = rules.mechanics.cardMechanic(plan.ownerStudentId)
+    if (mechanic?.kind === 'friend-marker') {
+      const transformId = extraId(mechanic.transformSkillRef)
+      if (skillId === transformId) {
         this.consumeNormally(plan.ownerSlot)
-        if (skillId === 'CH0077RidingEx01') {
-          this.record(frame, plan.ownerSlot, plan.skillRef, 'applied', 'card_owner:ibuki:executor:toramaru')
-        }
-        break
-      case 20041: {
+      } else {
+        state.markerTargets = intent.targetIds
+          .map(id => this.formation.slots.indexOf(id))
+          .filter(slot => slot >= 0)
+        state.overrideRef = mechanic.transformSkillRef
         this.keepInHand(plan.ownerSlot)
-        const targetId = intent.targetIds[0]
-        const targetSlot = targetId == null ? -1 : this.resolveSlot(targetId)
-        if (targetSlot >= 0) {
-          this.pendingCopies.push({ frame: frame + 113, ownerSlot: plan.ownerSlot, sourceSlot: targetSlot })
-          this.record(frame, plan.ownerSlot, plan.skillRef, 'scheduled', `copy_at:${frame + 113}:target:${targetId}`)
-        }
-        break
+        this.record(frame, plan.ownerSlot, plan.skillRef, 'applied', `markers:${state.markerTargets.join(',')}:transform:${transformId}:self_redraw:permanent`)
       }
-      default:
+    } else if (mechanic?.kind === 'transform') {
+      const transformId = extraId(mechanic.transformSkillRef)
+      if (skillId === transformId) {
         this.consumeNormally(plan.ownerSlot)
+      } else {
+        state.overrideRef = mechanic.transformSkillRef
+        if (mechanic.expiresAfter != null) {
+          state.mechanicExpiresAt = frame + mechanic.expiresAfter
+          state.mechanicTailOnExpiry = mechanic.moveToTailOnExpiry ?? false
+        }
+        if (mechanic.selfRedraw) this.keepInHand(plan.ownerSlot)
+        this.record(frame, plan.ownerSlot, plan.skillRef, 'applied', `transform:${transformId}:self_redraw:${mechanic.expiresAfter == null ? 'permanent' : `expires:${state.mechanicExpiresAt}`}`)
+      }
+    } else if (mechanic?.kind === 'behavior') {
+      const handler = this.behaviorHandlers[mechanic.behaviorId]
+      if (handler) handler(this.playContext(plan, intent, frame, state, skillId))
+    } else {
+      this.consumeNormally(plan.ownerSlot)
     }
 
     return { waterBuffStudentIds: this.observeTeamEx(plan.ownerSlot, frame) }
@@ -306,30 +539,38 @@ export class CardOrderSystem {
     }
   }
 
-  private commitDressHina(slot: number, skillId: string | undefined, frame: number): void {
+  /** friend-marker 机制：被标记目标的学生 ID。 */
+  markerTargetsOf(slot: number): number[] {
     const state = this.states.get(slot)
-    if (!state) return
-    const sequence = ['CH0230Ex02', 'CH0230Ex03', 'CH0230Ex04']
-    if (skillId === 'CH0230Ex04') {
-      state.hinaStage = undefined
-      state.hinaExpiresAt = undefined
-      state.overrideRef = undefined
-      state.pinned = false
-      this.consumeNormally(slot)
-      this.record(frame, slot, { kind: 'extra_ex', extraSkillId: skillId }, 'consumed', 'fixed_sequence:complete')
-      return
+    if (!state) return []
+    return state.markerTargets
+      .map(markerSlot => this.formation.slots[markerSlot])
+      .filter((id): id is number => id != null)
+  }
+
+  /** friend-marker 机制：是否已激活（开花）。 */
+  markerActive(slot: number): boolean {
+    return this.states.get(slot)?.markerActive ?? false
+  }
+
+  /** 被标记目标成功施放 EX：按配置计数，达到阈值后激活并停止累加。 */
+  observeMarkerAllyEx(targetSlot: number, frame: number): void {
+    for (const [slot, state] of this.states) {
+      const mechanic = rules.mechanics.cardMechanic(this.formation.slots[slot] ?? -1)
+      if (mechanic?.kind !== 'friend-marker' || state.markerActive) continue
+      if (!state.markerTargets.includes(targetSlot)) continue
+      const counter = mechanic.counter
+      if (!counter) continue
+      state.markerCount += counter.gainPerEx
+      if (state.markerCount >= counter.threshold) {
+        this.record(frame, slot, { kind: 'ex' }, 'applied', `marker_count:${state.markerCount}`)
+        state.markerActive = true
+        state.markerCount = 0
+        this.record(frame, slot, { kind: 'ex' }, 'applied', 'marker_active')
+      } else {
+        this.record(frame, slot, { kind: 'ex' }, 'applied', `marker_count:${state.markerCount}`)
+      }
     }
-    const nextStage = skillId == null ? 0 : sequence.indexOf(skillId) + 1
-    if (nextStage < 0 || nextStage >= sequence.length) {
-      this.consumeNormally(slot)
-      return
-    }
-    state.hinaStage = nextStage
-    state.hinaExpiresAt = frame + 300
-    state.overrideRef = { kind: 'extra_ex', extraSkillId: sequence[nextStage] }
-    state.pinned = true
-    this.keepInHand(slot)
-    this.record(frame, slot, state.overrideRef, 'applied', `fixed_sequence:${nextStage + 1}:expires:${state.hinaExpiresAt}`)
   }
 
   /**
@@ -343,108 +584,21 @@ export class CardOrderSystem {
     if (!state) return undefined
     const skillId = extraId(plan.skillRef)
 
-    switch (plan.executorStudentId) {
-      case 10074: {
-        const gauge = this.water.get(slot)
-        if (!gauge || gauge.counts <= 0) return undefined
-        gauge.counts--
-        this.record(frame, slot, plan.skillRef, 'used', `water_count:${gauge.counts}:copied_self_redraw`)
-        return slot
-      }
-      case 10086: {
-        const sequence = ['CH0230Ex02', 'CH0230Ex03', 'CH0230Ex04']
-        if (skillId === 'CH0230Ex04') {
-          state.hinaStage = undefined
-          state.hinaExpiresAt = undefined
-          state.overrideRef = undefined
-          state.pinned = false
-          this.moveToTail(slot)
-          this.record(frame, slot, plan.skillRef, 'consumed', 'fixed_sequence:copied_complete')
-          return undefined
-        }
-        const nextStage = skillId == null ? 0 : sequence.indexOf(skillId) + 1
-        if (nextStage >= 0 && nextStage < sequence.length) {
-          state.hinaStage = nextStage
-          state.hinaExpiresAt = frame + 300
-          state.overrideRef = { kind: 'extra_ex', extraSkillId: sequence[nextStage] }
-          state.pinned = true
-          this.record(frame, slot, state.overrideRef, 'applied', `fixed_sequence:copied:${nextStage + 1}`)
-          return slot
-        }
-        return undefined
-      }
-      case 10111:
-        if (skillId === 'CH0280Ex02') return undefined
-        state.overrideRef = { kind: 'extra_ex', extraSkillId: 'CH0280Ex02' }
-        state.neruExpiresAt = frame + 2_100
-        this.record(frame, slot, plan.skillRef, 'applied', 'transform:copied:CH0280Ex02')
-        return slot
-      case 10122:
-        if (skillId === 'CH0294Ex01') {
-          state.mikaRapidExpiresAt = frame + 900
-          state.mikaAttackUses = 0
-          state.pinned = true
-          this.record(frame, slot, plan.skillRef, 'applied', 'rapid_fire:copied_start')
-          return slot
-        }
-        if (skillId === 'CH0294Ex03') {
-          state.mikaRapidExpiresAt = undefined
-          state.mikaAttackUses = 0
-          state.pinned = false
-          this.moveToTail(slot)
-          this.record(frame, slot, plan.skillRef, 'consumed', 'rapid_fire:copied_end_to_tail')
-          return undefined
-        }
-        if (skillId === 'CH0294Ex02' && state.mikaRapidExpiresAt != null) {
-          state.mikaAttackUses++
-          state.pinned = true
-          this.record(frame, slot, plan.skillRef, 'used', `rapid_fire:copied_attack:${state.mikaAttackUses}`)
-          return slot
-        }
-        return undefined
-      case 10134:
-        if (skillId === 'CH0334Ex04') {
-          state.aliceEnergy = Math.min(2, state.aliceEnergy + 1)
-          this.record(frame, slot, plan.skillRef, 'applied', `energy:${state.aliceEnergy}:copied_self_redraw`)
-          return slot
-        }
-        if (skillId === 'CH0334Ex01') {
-          state.aliceEnergy = 0
-          this.record(frame, slot, plan.skillRef, 'consumed', 'energy:copied_reset')
-        }
-        return undefined
-      default:
-        return undefined
-    }
-  }
-
-  private commitSwimsuitMika(slot: number, skillId: string | undefined, frame: number): void {
-    const state = this.states.get(slot)
-    if (!state) return
-    if (skillId === 'CH0294Ex01') {
-      state.mikaRapidExpiresAt = frame + 900
-      state.mikaAttackUses = 0
-      state.pinned = true
-      this.keepInHand(slot)
-      this.record(frame, slot, { kind: 'extra_ex', extraSkillId: skillId }, 'applied', `rapid_fire:start:expires:${state.mikaRapidExpiresAt}`)
-      return
-    }
-    if (skillId === 'CH0294Ex03') {
-      state.mikaRapidExpiresAt = undefined
-      state.mikaAttackUses = 0
-      state.pinned = false
-      this.consumeNormally(slot)
-      this.record(frame, slot, { kind: 'extra_ex', extraSkillId: skillId }, 'consumed', 'rapid_fire:end_to_tail')
-      return
-    }
-    if (skillId === 'CH0294Ex02' && state.mikaRapidExpiresAt != null) {
-      state.mikaAttackUses++
-      state.pinned = true
-      this.keepInHand(slot)
-      this.record(frame, slot, { kind: 'extra_ex', extraSkillId: skillId }, 'used', `rapid_fire:attack:${state.mikaAttackUses}:self_redraw`)
-      return
-    }
-    this.consumeNormally(slot)
+    const mechanic = rules.mechanics.cardMechanic(plan.executorStudentId)
+    const copiedId = mechanic?.copiedBehaviorId
+    if (copiedId == null) return undefined
+    const handler = this.copiedBehaviorHandlers[copiedId]
+    if (!handler) return undefined
+    return handler({
+      slot,
+      studentId: plan.executorStudentId,
+      skillId,
+      skillRef: plan.skillRef,
+      frame,
+      state: state as unknown as CardMechanicState,
+      record: (skillRef, action, detail) => this.record(frame, slot, skillRef, action, detail),
+      moveToTail: () => this.moveToTail(slot),
+    })
   }
 
   private allowsExtraEx(
@@ -461,13 +615,19 @@ export class CardOrderSystem {
     if (id == null) return false
 
     if (copied) {
-      const sourceRule = executorId == null ? undefined : EX_CARD_RULES[executorId]
+      const sourceRule = executorId == null ? undefined : rules.card.get(executorId)
       return sourceRule?.extraSkillIds?.includes(id) === true
     }
-    if (ownerId === 16014 && id === 'CH0077RidingEx01') {
-      return intent.trigger?.source === 'manual' && intent.trigger.reasons?.includes('external_state') === true
+    if (ownerId == null) return false
+    const ownerMechanic = rules.mechanics.cardMechanic(ownerId)
+    if (ownerMechanic?.kind === 'behavior') {
+      if (ownerMechanic.allowExtraExFromRule) {
+        return rules.card.get(ownerId)?.extraSkillIds?.includes(id) === true
+      }
+      if (ownerMechanic.externalTriggerSkillIds?.includes(id) === true) {
+        return intent.trigger?.source === 'manual' && intent.trigger.reasons?.includes('external_state') === true
+      }
     }
-    if (ownerId === 10122 || ownerId === 10134) return EX_CARD_RULES[ownerId]?.extraSkillIds?.includes(id) === true
     const override = this.states.get(ownerSlot)?.overrideRef
     return override != null && sameSkillRef(override, ref)
   }
@@ -482,12 +642,14 @@ export class CardOrderSystem {
   private observeTeamEx(ownerSlot: number, frame: number): number[] {
     const buffStudents: number[] = []
     for (const [hanakoSlot, state] of this.water) {
-      if (hanakoSlot === ownerSlot || state.counts >= 2) continue
-      state.gauge += 40
+      const mechanic = rules.mechanics.cardMechanic(this.formation.slots[hanakoSlot] ?? -1)
+      const waterGauge = mechanic?.kind === 'behavior' ? mechanic.waterGauge : undefined
+      if (!waterGauge || hanakoSlot === ownerSlot || state.counts >= waterGauge.maxCounts) continue
+      state.gauge += waterGauge.gainPerTeamEx
       this.record(frame, hanakoSlot, { kind: 'extra_passive' }, 'applied', `water_gauge:${state.gauge}`)
       if (state.gauge >= 100) {
         state.gauge -= 100
-        state.counts = Math.min(2, state.counts + 1)
+        state.counts = Math.min(waterGauge.maxCounts, state.counts + 1)
         const studentId = this.formation.slots[hanakoSlot]
         if (studentId != null) buffStudents.push(studentId)
         this.record(frame, hanakoSlot, { kind: 'extra_passive' }, 'applied', `water_count:${state.counts}`)

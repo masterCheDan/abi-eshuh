@@ -12,7 +12,10 @@ import {
     COST_SCALE,
 } from '../../utils/costCalc'
 import { TargetPicker, type TargetOption } from './TargetPicker'
-import { fixedSkillTargetIds, skillTargetPolicy } from '../../engine/system/skillTargeting'
+import { SummonTargetPicker } from './SummonTargetPicker'
+import { rules, type SkillTargetPolicy } from '../../domain/rules/GameRules'
+import { getExSkillView } from '../../domain/SkillViewService'
+import { activeSummonsAtFrame } from '../../engine'
 
 interface ExtraSkillCardProps {
     student: Student
@@ -25,10 +28,9 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
     const allLanes = useTimelineStore((s) => s.lanes)
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
     const simulation = useSimulationStore((s) => s.result)
-    const squadStudents = useMemo(() => slots.filter((s) => s.student).map((s) => s.student!), [slots])
-
     const slot = useMemo(() => slots.find((value) => value.student?.Id === student.Id), [slots, student.Id])
     const slotIndex = slot?.index ?? -1
+    const gearLevel = slot?.gearLevel ?? 1
     const exLevel = slot?.exLevel ?? 5
 
     // ── 时间输入 ──
@@ -55,22 +57,25 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
     const frame = Math.min(29, parseInt(vFrame) || 0)
     const msVal = Math.min(999, parseInt(vMs) || 0)
     const totalFrames = min * 1800 + sec * 30 + frame
+    const activeSummons = useMemo(() => activeSummonsAtFrame(simulation?.effectAudit, totalFrames), [simulation?.effectAudit, totalFrames])
 
-    const targetPolicy = useMemo(() => skillTargetPolicy(extraSkill.Effects), [extraSkill.Effects])
-    const isManualTarget = targetPolicy === 'select-ally' || targetPolicy === 'select-any'
+    const skillView = useMemo(
+        () => getExSkillView(student, slots, { kind: 'extra_ex', extraSkillId: extraSkill.Id }, exLevel, t.event_log.target_boss),
+        [student, slots, extraSkill.Id, exLevel, t.event_log.target_boss],
+    )
+    const targetPolicy = (skillView?.targeting.policy ?? 'self') as SkillTargetPolicy
+    const isManualTarget = skillView?.isManualTarget ?? false
     const [selectedTargets, setSelectedTargets] = useState<number[]>([])
+    const [selectedSummonIds, setSelectedSummonIds] = useState<string[]>([])
 
-    const targetOptions = useMemo<TargetOption[]>(() => {
-        const allies = squadStudents.map(s => ({ id: s.Id, label: s.Name }))
-        return targetPolicy === 'select-any' ? [{ id: -1, label: t.event_log.target_boss }, ...allies] : allies
-    }, [targetPolicy, squadStudents, t.event_log.target_boss])
+    const targetOptions = useMemo<TargetOption<number>[]>(() => skillView?.availableTargets ?? [], [skillView])
 
     const effectiveTargets = (): number[] => {
-        return isManualTarget ? selectedTargets : fixedSkillTargetIds(targetPolicy, student.Id)
+        return isManualTarget ? selectedTargets : rules.targeting.fixedTargetIds(targetPolicy as Exclude<SkillTargetPolicy, 'select-ally' | 'select-any'>, student.Id)
     }
 
     // ── Cost ──
-    const baseSkillCost = extraSkill.Cost?.[exLevel - 1] ?? extraSkill.Cost?.[0] ?? 0
+    const baseSkillCost = skillView?.cost ?? extraSkill.Cost?.[exLevel - 1] ?? extraSkill.Cost?.[0] ?? 0
     const effectiveSkillCost = effectiveSkillCostAtFrame(simulation, student.Id, totalFrames, baseSkillCost)
     const skillCost = effectiveSkillCost * COST_SCALE
     const availableCost = simulation?.costHistory[Math.max(0, Math.min(totalFrames, simulation.maxFrame))] ?? 0
@@ -90,7 +95,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
             const st = allLanes.find(l => l.slotIndex === slotIndex)?.student
             if (st) {
                 if (s.type === 'ex') dur = st.Skills.E.Duration
-                else if (s.type === 'ns') { const p = st.HasGear ? st.Skills.G : st.Skills.P; dur = p.Duration || 60 }
+                else if (s.type === 'ns') { const p = gearLevel > 0 && st.Skills.G ? st.Skills.G : st.Skills.P; dur = p?.Duration || 60 }
             }
             if (totalFrames < s.startFrame + dur && totalFrames + footprint > s.startFrame) return false
         }
@@ -101,9 +106,9 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
         }
         if (exSet.has(totalFrames)) return false
         return true
-    }, [totalFrames, extraSkill.Duration, slotIndex, allLanes])
+    }, [totalFrames, extraSkill.Duration, slotIndex, allLanes, gearLevel])
 
-    const canAct = isTimeValid && hasEnoughCost && effectiveTargets().length > 0
+    const canAct = isTimeValid && hasEnoughCost && (!isManualTarget || effectiveTargets().length + selectedSummonIds.length > 0)
     const isExecutable = extraSkill.Duration > 0
 
     const handleAdd = () => {
@@ -114,6 +119,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
             studentId: student.Id,
             targetId: targetIds[0] ?? student.Id,
             targetIds,
+            targetSummonIds: selectedSummonIds,
             skillRef: { kind: 'extra_ex', extraSkillId: extraSkill.Id },
             triggerSource: 'manual',
             skillCost: baseSkillCost,
@@ -226,7 +232,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                     <span style={{ color: 'var(--text-muted)' }}>{extraSkill.Duration} {t.skill.frame}</span>
                 </div>
 
-                {isManualTarget ? <div className="mb-1.5"><TargetPicker options={targetOptions} selectedIds={selectedTargets} onChange={setSelectedTargets} label={t.skill.target} /></div> : (
+                {isManualTarget ? <div className="mb-1.5 space-y-2"><TargetPicker options={targetOptions} selectedIds={selectedTargets} onChange={setSelectedTargets} label={t.skill.target} /><SummonTargetPicker summons={activeSummons} selectedIds={selectedSummonIds} onChange={setSelectedSummonIds} /></div> : (
                     <div className="mb-1.5 text-[10px]"><span style={{ color: 'var(--text-muted)' }}>{t.skill.target} </span><span className="rounded px-2 py-1" style={{ color: targetPolicy === 'boss' ? '#fff' : 'var(--text-secondary)', background: targetPolicy === 'boss' ? 'var(--danger)' : 'var(--bg-surface)' }}>{targetPolicy === 'self' ? t.skill.target_self : targetPolicy === 'boss' ? t.event_log.target_boss : targetPolicy === 'mixed' ? `${t.skill.target_self} / ${t.event_log.target_boss}` : '固定编队范围'}</span></div>
                 )}
 
@@ -251,7 +257,7 @@ export function ExtraSkillCard({ student, extraSkill }: ExtraSkillCardProps) {
                         onDragStart={(e) => {
                             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                                 type: 'ex', name: extraSkill.Name, startFrame: 0,
-                                studentId: student.Id, targetId: effectiveTargets()[0] ?? student.Id, targetIds: effectiveTargets(),
+                                studentId: student.Id, targetId: effectiveTargets()[0] ?? student.Id, targetIds: effectiveTargets(), targetSummonIds: selectedSummonIds,
                                 skillRef: { kind: 'extra_ex', extraSkillId: extraSkill.Id }, triggerSource: 'manual',
                                 skillCost: baseSkillCost,
                                 skillDuration: extraSkill.Duration || 0,

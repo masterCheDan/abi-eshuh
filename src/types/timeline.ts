@@ -1,5 +1,5 @@
 import type { Student } from './student'
-import type { SkillRef, TriggerSource, TriggerEvidence } from '../engine/model/types'
+import type { SkillRef, TriggerSource, TriggerEvidence } from '../domain/types'
 
 /** 时间轴上的一个技能块（仅记录事实，不包含推导数据） */
 export interface SkillBlock {
@@ -17,6 +17,8 @@ export interface SkillBlock {
   targetIds?: number[]
   /** 稳定事件 ID，用于分享码与召唤物目标跨导入复现。 */
   eventId?: string
+  /** 可复现的召唤物目标引用（分享码导入时使用）。 */
+  targetSummonRefs?: Array<{ summonId: number; sourceEventId: string; spawnIndex: number }>
   /** 已在场召唤物的稳定实例 ID；不占用学生 ID / Boss 占位。 */
   targetSummonIds?: string[]
   /** 稳定技能引用；缺失时由 type 按旧行为推导。 */
@@ -57,6 +59,9 @@ export interface StudentLane {
   /** 该轨道上的技能块列表 */
   skills: SkillBlock[]
 }
+
+/** A preview, not an event fact. Never passed to the simulation engine. */
+export interface NsSuggestion { id: string; slotIndex: number; block: SkillBlock }
 
 /** 完整的时间轴状态 */
 export interface TimelineState {

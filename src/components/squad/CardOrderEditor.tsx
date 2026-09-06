@@ -4,7 +4,7 @@ import { StudentAvatar } from '../student-panel/StudentAvatar'
 import type { Student } from '../../types/student'
 import { useI18n, tpl } from '../../i18n'
 import { useSimulationStore } from '../../stores/useSimulationStore'
-import type { CardStateSnapshot } from '../../engine/model/types'
+import type { CardStateSnapshot } from '../../engine'
 
 export function CardOrderEditor() {
     const { t } = useI18n()
@@ -18,7 +18,8 @@ export function CardOrderEditor() {
     const runtimeWindow = useSimulationStore((s) => s.result?.window)
 
     const windowSize = mode === 'normal' ? 3 : 5
-    const enabled = deckOrder !== null
+    // 牌序校验恒开启；该开关仅决定是否自定义初始牌序。
+    const custom = deckOrder !== null
 
     const assignedSlots = slots.filter(s => s.student)
 
@@ -26,7 +27,7 @@ export function CardOrderEditor() {
     const orderedSet = new Set(ordered)
     const freeSlots = assignedSlots.filter(s => !orderedSet.has(s.index))
 
-    const isOrdered = enabled && ordered.length > 0
+    const isOrdered = custom && ordered.length > 0
 
     const handleCardClick = (slotIndex: number) => {
         if (selected === null) {
@@ -191,35 +192,33 @@ export function CardOrderEditor() {
                         {collapsed ? '▶' : '▼'}
                     </button>
                     <span className="ba-eyebrow">{t.card_order.title}</span>
-                    {enabled && (
-                        <span className="text-[10px] font-game px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
-                            {tpl(t.card_order.window, { n: windowSize })}
-                        </span>
-                    )}
+                    <span className="text-[10px] font-game px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+                        {tpl(t.card_order.window, { n: windowSize })}
+                    </span>
                 </div>
                 <button
                     onClick={toggleDeckOrder}
-                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${enabled ? 'bg-blue-600/20 text-blue-400 border-blue-500/40' : ''
+                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${custom ? 'bg-blue-600/20 text-blue-400 border-blue-500/40' : ''
                         }`}
                     style={{
-                        background: enabled ? 'rgba(59,130,246,0.15)' : 'var(--bg-surface-alt)',
-                        color: enabled ? '#60a5fa' : 'var(--text-muted)',
-                        borderColor: enabled ? 'rgba(59,130,246,0.3)' : 'var(--border)',
+                        background: custom ? 'rgba(59,130,246,0.15)' : 'var(--bg-surface-alt)',
+                        color: custom ? '#60a5fa' : 'var(--text-muted)',
+                        borderColor: custom ? 'rgba(59,130,246,0.3)' : 'var(--border)',
                     }}
                 >
-                    {enabled ? t.card_order.enabled : t.card_order.disabled}
+                    {custom ? t.card_order.enabled : t.card_order.disabled}
                 </button>
             </div>
 
             {!collapsed && (
                 <>
-                    {!enabled && (
+                    {!custom && (
                         <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                             {t.card_order.disabled_hint}
                         </p>
                     )}
 
-                    {enabled && (
+                    {custom && (
                         <div className="flex flex-col gap-2">
                             {renderOrderedCards()}
 
@@ -242,26 +241,26 @@ export function CardOrderEditor() {
                                     {t.card_order.help}
                                 </p>
                             )}
+                        </div>
+                    )}
 
-                            {runtimeWindow && (
-                                <div className="mt-1 rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-alt)' }}>
-                                    <div className="mb-2 text-[9px] font-game tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                                        {t.card_order.result}
+                    {runtimeWindow && (
+                        <div className="mt-1 rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-alt)' }}>
+                            <div className="mb-2 text-[9px] font-game tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                                {t.card_order.result}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-12 shrink-0 text-[9px]" style={{ color: '#67e8f9' }}>{t.card_order.hand}</span>
+                                <div className="flex flex-wrap gap-2">
+                                    {runtimeWindow.hand.map(renderRuntimeCard)}
+                                </div>
+                            </div>
+                            {runtimeWindow.drawPile.length > 0 && (
+                                <div className="mt-2 flex items-center gap-2 border-t pt-2" style={{ borderColor: 'var(--border-light)' }}>
+                                    <span className="w-12 shrink-0 text-[9px]" style={{ color: 'var(--text-muted)' }}>{t.card_order.draw_pile}</span>
+                                    <div className="flex flex-wrap gap-2 opacity-70">
+                                        {runtimeWindow.drawPile.map(renderRuntimeCard)}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-12 shrink-0 text-[9px]" style={{ color: '#67e8f9' }}>{t.card_order.hand}</span>
-                                        <div className="flex flex-wrap gap-2">
-                                            {runtimeWindow.hand.map(renderRuntimeCard)}
-                                        </div>
-                                    </div>
-                                    {runtimeWindow.drawPile.length > 0 && (
-                                        <div className="mt-2 flex items-center gap-2 border-t pt-2" style={{ borderColor: 'var(--border-light)' }}>
-                                            <span className="w-12 shrink-0 text-[9px]" style={{ color: 'var(--text-muted)' }}>{t.card_order.draw_pile}</span>
-                                            <div className="flex flex-wrap gap-2 opacity-70">
-                                                {runtimeWindow.drawPile.map(renderRuntimeCard)}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
                         </div>

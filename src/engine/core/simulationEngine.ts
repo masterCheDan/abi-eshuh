@@ -20,30 +20,40 @@
  */
 
 import type { Student } from '../../types/student'
-import type { StudentLane } from '../../types/timeline'
+import { normalizeTrigger, automaticNsError, requiredTriggerReasons } from '../../domain/triggerEvidence'
 import type {
   Intent,
   BattleEnv,
   Formation,
-  ActionRecord,
   SimulationResult,
   SimulationError,
   StudentRuntimeState,
   SkillRef,
+  NsSchedulingConfig,
 } from '../model/types'
 import { StudentState } from '../model/types'
 import { isInterruptible } from '../model/fsm'
-import { TriggerScheduler, getNsSkill, getNsDuration } from '../system/triggerScheduler'
 import {
-  computeCostTimeline,
-  costAtFrame,
-  collectCostChanges,
   COST_SCALE,
   formationMaxCost,
 } from '../system/costSystem'
-import { StudentEffectSystem, resolveSkill, type ResolvedSkill } from '../system/studentEffectSystem'
-import { automaticTriggerSpecs } from '../system/triggerSpecs'
-import { CardOrderSystem, type CardPlayPlan } from '../system/cardOrderSystem'
+import { StudentEffectSystem } from '../system/studentEffectSystem'
+import { resolveSkill, type ResolvedSkill } from '../system/SkillResolver'
+import { rules } from '../../domain/rules/GameRules'
+import { CardOrderSystem, inferGreedyDeck, type CardPlayPlan } from '../system/cardOrderSystem'
+import { CostSystem } from '../state/CostSystem'
+import type { BattleState } from '../state/BattleState'
+import { ActionSystem } from '../system/ActionSystem'
+import { NsScheduler } from '../system/NsScheduler'
+
+/** 纯输入：引擎不关心输入来源（UI 拖拽 / 自动搜索 / 导入 / 测试）。 */
+export interface SimulationInput {
+  env: BattleEnv
+  formation: Formation
+  students: Map<number, Student>
+  intents: Intent[]
+  nsScheduling?: NsSchedulingConfig
+}
 
 // ═══════════════════════════════════════════════════
 // Engine 门面
@@ -53,33 +63,18 @@ export class SimulationEngine {
   private env!: BattleEnv
   private formation!: Formation
   private students: Map<number, Student> = new Map()
-  private lanes: StudentLane[] = []
-  private scheduler: TriggerScheduler = new TriggerScheduler()
-  private logIdCounter = 0
-  /** 滑动窗口左边界（已消费的牌数） */
-  private windowLeft = 0
 
   /** 加载战斗环境 */
   loadBattle(env: BattleEnv, formation: Formation, students: Map<number, Student>): void {
     this.env = env
     this.formation = formation
     this.students = students
+  }
 
-    // 用 formation 构建 StudentLane 供 costSystem 使用
-    this.lanes = formation.slots.map((sid, i) => {
-      const student = sid != null ? students.get(sid) ?? null : null
-      const label =
-        i < (formation.mode === 'normal' ? 4 : 6)
-          ? `STRIKER ${i + 1}`
-          : `SPECIAL ${i - (formation.mode === 'normal' ? 4 : 6) + 1}`
-      return {
-        slotIndex: i,
-        label,
-        student,
-        studentId: sid,
-        skills: [], // 由 simulate() 填充
-      }
-    })
+  /** 从纯输入直接推演（内部完成 loadBattle）。 */
+  simulateInput(input: SimulationInput): SimulationResult {
+    this.loadBattle(input.env, input.formation, input.students)
+    return this.simulate(input.intents, input.nsScheduling)
   }
 
   /**
@@ -90,13 +85,9 @@ export class SimulationEngine {
   /**
    * 确定性学生技能推演。所有失败的 intent 在改变 Cost、牌序或状态前被拒绝。
    */
-  simulate(intents: Intent[]): SimulationResult {
-    this.scheduler.reset()
-    this.logIdCounter = 0
-    this.windowLeft = 0
-
+  simulate(intents: Intent[], nsScheduling?: NsSchedulingConfig): SimulationResult {
+    const nsScheduler = new NsScheduler(this.formation, this.students, intents, nsScheduling)
     const maxFrame = this.env.maxFrame
-    const actionLogs: ActionRecord[] = []
     const errors: SimulationError[] = []
     const runtimes = new Map<number, StudentRuntimeState>()
     for (let slot = 0; slot < this.formation.slots.length; slot++) {
@@ -105,14 +96,21 @@ export class SimulationEngine {
     }
 
     const effects = new StudentEffectSystem(this.students, this.formation, this.env)
-    const cards = new CardOrderSystem(this.formation, this.students)
+    const actions = new ActionSystem(runtimes, (actionId, frame) => effects.interruptAction(actionId, frame))
+    effects.observeActions(audit => actions.effectApplied(audit), frame => actions.syncControl(frame))
+    for (const runtime of runtimes.values()) {
+      const student = this.students.get(runtime.studentId)
+      if (!student || student.SquadType !== 'Main') continue
+      const inspection = rules.action.inspect(student)
+      actions.diagnostics.push(...inspection.diagnostics.map(d => ({ studentId: student.Id, code: d.code, path: d.path, message: d.message })))
+    }
     let initialCostUnits = 0
     // Only versioned battle-start clauses are automatic. Later clauses in the
     // same NS/SS remain manual facts and are excluded by effectIndices.
     for (const runtime of runtimes.values()) {
       const student = this.students.get(runtime.studentId)
       if (!student) continue
-      for (const spec of automaticTriggerSpecs(student)) {
+      for (const spec of rules.trigger.automatic(student, this.formation.gearLevels?.[runtime.slotIndex] ?? 1)) {
         const ref = spec.skillRef
         if (
           ref.kind === 'weapon_passive'
@@ -142,7 +140,7 @@ export class SimulationEngine {
             skillRef: ref,
             triggerSource: 'automatic',
             trigger: { source: 'automatic' },
-          }, openingSkill, 0)
+          }, openingSkill, 0, runtimes)
         }
         if (spec.initialCostByLevel?.length) {
           const grant = spec.initialCostByLevel[skill.level - 1] ?? spec.initialCostByLevel[0] ?? 0
@@ -162,286 +160,267 @@ export class SimulationEngine {
     }
 
     const byFrame = new Map<number, Intent[]>()
-    for (const intent of intents) {
-      if (intent.frame < 0 || intent.frame > maxFrame) continue
+    const acceptedIntents: Intent[] = []
+    const automaticKeys = new Set<string>()
+    for (const original of intents) {
+      const evidence = normalizeTrigger(original)
+      const slot = this.resolveSlot(original.issuerId)
+      const student = this.students.get(original.issuerId)
+      let failure = 'error' in evidence ? evidence.error : null
+      if (!Number.isInteger(original.frame) || original.frame < 0 || original.frame > maxFrame) failure = '触发帧必须是模拟范围内的非负整数'
+      const ref = student ? this.intentSkillRef(original, student, this.formation.gearLevels?.[slot] ?? 1) : undefined
+      const resolved = student && ref ? resolveSkill(student, ref, this.getSkillLevels(slot)) : null
+      if (!failure && !('error' in evidence) && resolved && student && ref) {
+        if (evidence.trigger.source === 'automatic') {
+          failure = original.type !== 'NS_TRIGGER' ? '外部自动事件只允许已登记的周期 NS' : automaticNsError(student, ref, resolved.effects, this.formation.gearLevels?.[slot] ?? 1, original.frame)
+          const key = `${original.issuerId}:${ref.kind}:${original.frame}`
+          if (!failure && automaticKeys.has(key)) failure = '同一技能同一周期的自动事件重复'
+          if (!failure) automaticKeys.add(key)
+        } else {
+          if (ref.kind === 'passive' || ref.kind === 'weapon_passive' || ref.kind === 'extra_passive' && rules.skill.selfExBuffEpIds.has(student.Id)) {
+            failure = '开局被动及关联 EX 效果由引擎内部生成，不能作为外部事件重复注入'
+          } else {
+            const missing = requiredTriggerReasons(resolved.effects, student.Id, ref).filter(reason => !evidence.trigger.reasons?.includes(reason))
+            if (missing.length) failure = `需要用户确认触发事实：${missing.join(', ')}`
+          }
+        }
+      }
+      if (failure || 'error' in evidence) {
+        errors.push({ frame: original.frame, issuerId: original.issuerId, type: 'INVALID_TRIGGER', message: failure ?? '触发事实非法' })
+        continue
+      }
+      const intent = { ...original, ...evidence }
+      acceptedIntents.push(intent)
       const list = byFrame.get(intent.frame) ?? []
       list.push(intent)
       byFrame.set(intent.frame, list)
     }
 
+    // 牌序校验恒开启：未自定义初始牌序时，按时间轴施放顺序贪心推断牌库。
+    const effectiveDeck = this.formation.deckOrder ?? inferGreedyDeck(this.formation.slots, acceptedIntents)
+    const cards = new CardOrderSystem({ ...this.formation, deckOrder: effectiveDeck }, this.students)
+
     const activeLanes = this.formation.slots.filter((id): id is number => id != null)
     const baseRegen = activeLanes.reduce((sum, id) => sum + (this.students.get(id)?.Regen || 700), 0)
     const maxCost = formationMaxCost(this.formation, this.students)
-    let availableCost = Math.min(maxCost, Math.max(0, initialCostUnits * COST_SCALE))
-    let debtSource: { studentId: number; skillRef: SkillRef } | null = null
-    const costHistory: number[] = []
-
-    for (let frame = 0; frame <= maxFrame; frame++) {
-      cards.advance(frame)
-      effects.advance(frame, runtimes)
-      cards.syncRuntime(frame, runtimes)
-      this.updateCC(runtimes, frame)
-      this.tickAllFSM(runtimes, frame)
-      const costBeforeRegen = availableCost
-      availableCost = Math.min(maxCost, availableCost + baseRegen + effects.getRegenDelta(baseRegen))
-      if (costBeforeRegen < 0 && availableCost >= 0 && debtSource) {
-        effects.recordCostDebtRepaid(debtSource.studentId, debtSource.skillRef, frame)
-        debtSource = null
-      }
-
-      const frameIntents = [...(byFrame.get(frame) ?? [])].sort((a, b) => a.priority - b.priority)
-      for (const intent of frameIntents) {
-        const ownerSlot = this.resolveSlot(intent.issuerId)
-        const ownerRuntime = runtimes.get(ownerSlot)
-        const ownerStudent = this.students.get(intent.issuerId)
-        if (ownerSlot < 0 || !ownerRuntime || !ownerStudent) {
-          errors.push({ frame, issuerId: intent.issuerId, message: 'caster is not in formation', type: 'INVALID_TARGET' })
-          continue
-        }
-        const requestedRef = this.intentSkillRef(intent, ownerStudent)
-        let cardPlan: CardPlayPlan | undefined
-        if (intent.type === 'EX_CAST') {
-          const prepared = cards.preparePlay(ownerSlot, requestedRef, intent)
-          if (typeof prepared === 'string') {
-            errors.push({
-              frame,
-              issuerId: intent.issuerId,
-              message: prepared,
-              type: prepared === 'card_order_violation' ? 'OUT_OF_WINDOW' : 'INVALID_CONDITION',
-            })
-            continue
-          }
-          cardPlan = prepared
-        }
-
-        const executionSlot = cardPlan?.executorSlot ?? ownerSlot
-        const runtime = runtimes.get(executionSlot)
-        const student = this.students.get(cardPlan?.executorStudentId ?? intent.issuerId)
-        const ref = cardPlan?.skillRef ?? requestedRef
-        if (!runtime || !student) {
-          errors.push({ frame, issuerId: intent.issuerId, message: 'skill executor is not in formation', type: 'INVALID_TARGET' })
-          continue
-        }
-        const executionIntent: Intent = { ...intent, issuerId: student.Id, skillRef: ref }
-        const skill = resolveSkill(student, ref, this.getSkillLevels(executionSlot))
-        if (!skill) {
-          errors.push({ frame, issuerId: intent.issuerId, message: 'skill reference is not available', type: 'INVALID_CONDITION' })
-          continue
-        }
-        const effectError = effects.validate(executionIntent, skill, runtimes, cardPlan?.allowExtraEx === true)
-        if (effectError) {
-          errors.push({ frame, issuerId: intent.issuerId, message: effectError, type: effectError.includes('target') ? 'INVALID_TARGET' : 'INVALID_CONDITION' })
-          continue
-        }
-        if (!isInterruptible(runtime.currentState)) {
-          errors.push({ frame, issuerId: intent.issuerId, message: 'caster is executing a non-interruptible action', type: 'COOLDOWN' })
-          continue
-        }
-
-        const isEx = skill.action === 'EX'
-        const baseCost = cardPlan ? cards.effectiveBaseCost(cardPlan, skill.cost) : skill.cost
-        const cost = effects.getEffectiveCost(student.Id, baseCost) * COST_SCALE
-        const borrowLimit = effects.getCostBorrowLimit(student.Id) * COST_SCALE
-        if (isEx && cost > 0 && availableCost < cost && availableCost - cost < -borrowLimit) {
-          errors.push({ frame, issuerId: intent.issuerId, message: `Cost exceeded at frame ${frame}`, type: 'COST_EXCEEDED' })
-          continue
-        }
-        if (!this.applyResolvedIntent(executionIntent, runtime, student, skill, frame, actionLogs)) {
-          errors.push({ frame, issuerId: intent.issuerId, message: 'state transition rejected', type: 'COOLDOWN' })
-          continue
-        }
-        if (isEx) {
-          availableCost -= cost
-          if (availableCost < 0) {
-            debtSource = { studentId: student.Id, skillRef: ref }
-            effects.recordCostDebt(student.Id, ref, frame, availableCost / COST_SCALE)
-          }
-          effects.consumeCostModifiers(student.Id, frame)
-          if (cardPlan) {
-            const cardResult = cards.commitPlay(cardPlan, intent, frame)
-            for (const hanakoId of cardResult.waterBuffStudentIds) {
-              const hanakoSlot = this.resolveSlot(hanakoId)
-              const hanako = this.students.get(hanakoId)
-              if (hanakoSlot < 0 || !hanako) continue
-              const passiveRef: SkillRef = { kind: 'extra_passive' }
-              const passive = resolveSkill(hanako, passiveRef, this.getSkillLevels(hanakoSlot))
-              if (!passive) continue
-              effects.schedule({
-                id: `water-gauge-${hanakoId}-${frame}`,
-                frame,
-                type: 'SS_TRIGGER',
-                issuerId: hanakoId,
-                targetIds: [hanakoId],
-                priority: 2,
-                skillRef: passiveRef,
-                triggerSource: 'automatic',
-                trigger: { source: 'automatic' },
-              }, passive, frame)
-            }
-          }
-        }
-        effects.schedule(executionIntent, skill, frame)
-      }
-      costHistory.push(availableCost)
+    const cost = new CostSystem(maxCost, initialCostUnits * COST_SCALE)
+    const debt: { current: { studentId: number; skillRef: SkillRef } | null } = { current: null }
+    const state: BattleState = {
+      frame: 0,
+      formation: this.formation,
+      runtimes,
+      cards,
+      effects,
+      cost,
+      actions,
+      nsScheduler,
     }
 
+    for (let frame = 0; frame <= maxFrame; frame++) {
+      this.processFrame(state, frame, baseRegen, byFrame, errors, debt)
+      state.cost.recordFrame()
+    }
+
+    nsScheduler.finish(maxFrame)
     return {
       maxFrame,
       maxCost,
-      costHistory,
-      actionLogs,
+      costHistory: [...state.cost.costHistory],
+      actionLogs: actions.records,
+      actionEvents: actions.events,
+      schedulingDiagnostics: [...actions.diagnostics, ...effects.actionDiagnostics, ...nsScheduler.diagnostics],
+      nsScheduling: nsScheduler.result,
       errors,
-      effectAudit: [...effects.audit, ...cards.audit].sort((left, right) => left.frame - right.frame),
-      effectLedger: effects.ledger,
-      window: cards.snapshot(),
+      effectAudit: [...state.effects.audit, ...state.cards.audit].sort((left, right) => left.frame - right.frame),
+      effectLedger: state.effects.ledger,
+      window: state.cards.snapshot(),
       finalRuntimes: runtimes,
-      finalSummons: effects.snapshotSummons(),
+      finalSummons: state.effects.snapshotSummons(),
     }
   }
 
-  /** 保留旧实现供历史比对，新的入口仅使用上方确定性流程。 */
-  /** @deprecated 仅用于对比旧结果；新调用方应使用 simulate。 */
-  simulateLegacy(intents: Intent[]): SimulationResult {
-    this.scheduler.reset()
-    this.logIdCounter = 0
-    this.windowLeft = 0
-
-    const maxFrame = this.env.maxFrame
-    const actionLogs: ActionRecord[] = []
-    const errors: SimulationError[] = []
-
-    // ── 初始化运行时 ──
-    const runtimes = new Map<number, StudentRuntimeState>()
-    for (let i = 0; i < this.formation.slots.length; i++) {
-      const sid = this.formation.slots[i]
-      if (sid == null) continue
-      runtimes.set(i, this.initRuntime(i, sid))
+  /** 单帧编排：推进子系统状态后处理本帧意图。 */
+  private processFrame(
+    state: BattleState,
+    frame: number,
+    baseRegen: number,
+    byFrame: Map<number, Intent[]>,
+    errors: SimulationError[],
+    debt: { current: { studentId: number; skillRef: SkillRef } | null },
+  ): void {
+    state.frame = frame
+    state.actions.advance(frame)
+    state.cards.advance(frame)
+    state.effects.advance(frame, state.runtimes)
+    state.cards.syncRuntime(frame, state.runtimes)
+    state.actions.syncControl(frame)
+    const costBeforeRegen = state.cost.availableCost
+    state.cost.advance(baseRegen + state.effects.getRegenDelta(baseRegen))
+    if (costBeforeRegen < 0 && state.cost.availableCost >= 0 && debt.current) {
+      state.effects.recordCostDebtRepaid(debt.current.studentId, debt.current.skillRef, frame)
+      debt.current = null
     }
 
-    // ── Cost 时间线 ──
-    // 先将 Intent 注入到 lanes 中以便 costSystem 计算
-    this.injectIntentsToLanes(intents)
-    const maxCost = formationMaxCost(this.formation, this.students)
-    const costTimeline = computeCostTimeline(this.lanes, this.formation.mode, maxFrame, maxCost)
-    const costHistory: number[] = []
+    const frameIntents = [...(byFrame.get(frame) ?? [])].sort((a, b) => a.priority - b.priority)
+    this.resolveIntents(state, frameIntents, errors, debt)
+    state.nsScheduler.observeActions(state.actions.events)
+    for (const [slotIndex, runtime] of state.runtimes) {
+      const intent = state.nsScheduler.ready(slotIndex, frame, runtime)
+      if (!intent) continue
+      const actionIndex = state.actions.records.length
+      const errorIndex = errors.length
+      this.resolveIntents(state, [intent], errors, debt)
+      const action = state.actions.records[actionIndex]
+      if (action) state.effects.markAutomaticAction(action.recordId)
+      state.nsScheduler.settle(slotIndex, frame, action, errors[errorIndex]?.message)
+      state.nsScheduler.observeActions(state.actions.events)
+    }
+  }
 
-    // ── 实时 Cost 追踪（用于正确的消耗校验）──
-    const activeLanes = this.lanes.filter(l => l.student)
-    const baseRegen = activeLanes.reduce((sum, l) => sum + (l.student!.Regen || 700), 0)
-
-    const regChanges = activeLanes.flatMap(l => collectCostChanges(l.student!))
-    let availableCost = 0
-    let currentRegen = baseRegen + regChanges.filter(r => r.frame === 0).reduce((s, r) => s + r.regenDelta, 0)
-    const regStartEvents = regChanges.filter(r => r.frame > 0).sort((a, b) => a.frame - b.frame)
-    const regEndEvents = regChanges.filter(r => r.endFrame < maxFrame).sort((a, b) => a.endFrame - b.endFrame)
-    let regStartIdx = 0
-    let regEndIdx = 0
-
-    // ── Tick Pipeline ──
-    for (let frame = 0; frame <= maxFrame; frame++) {
-      // Step 1: Clock Update (already done by loop)
-      while (regStartIdx < regStartEvents.length && regStartEvents[regStartIdx].frame === frame) {
-        currentRegen += regStartEvents[regStartIdx].regenDelta
-        regStartIdx++
+  /** Manual and generated intents share the same atomic execution path. */
+  private resolveIntents(
+    state: BattleState,
+    frameIntents: readonly Intent[],
+    errors: SimulationError[],
+    debt: { current: { studentId: number; skillRef: SkillRef } | null },
+  ): void {
+    const frame = state.frame
+    for (const intent of frameIntents) {
+      const ownerSlot = this.resolveSlot(intent.issuerId)
+      const ownerRuntime = state.runtimes.get(ownerSlot)
+      const ownerStudent = this.students.get(intent.issuerId)
+      if (ownerSlot < 0 || !ownerRuntime || !ownerStudent) {
+        errors.push({ frame, issuerId: intent.issuerId, message: 'caster is not in formation', type: 'INVALID_TARGET' })
+        continue
       }
-      while (regEndIdx < regEndEvents.length && regEndEvents[regEndIdx].endFrame === frame) {
-        currentRegen -= regEndEvents[regEndIdx].regenDelta
-        regEndIdx++
-      }
-      availableCost = Math.min(maxCost, Math.max(0, availableCost + currentRegen))
-      // Step 2: Buff/CC Update
-      this.updateCC(runtimes, frame)
-      costHistory.push(costAtFrame(costTimeline, frame))
-
-      // Step 3: FSM Tick — 步进所有角色
-      this.tickAllFSM(runtimes, frame)
-
-      // Step 4: Trigger Scheduler — 检查触发条件
-      this.tickScheduler(runtimes, frame)
-
-      // Step 5: Intent Resolve — 收集本帧 Intent
-      const frameIntents = this.resolveIntents(intents, frame)
-
-      // 从 scheduler 拉取系统 Intent
-      const systemIntents = this.scheduler.pollIntents(frame)
-      const allIntents = [...frameIntents, ...systemIntents]
-
-      if (allIntents.length === 0) continue
-
-      // Step 6: Priority Sort (稳定排序)
-      allIntents.sort((a, b) => {
-        if (a.priority !== b.priority) return a.priority - b.priority
-        return 0 // 稳定：按原始顺序 (ES spec 保证)
-      })
-
-      // Step 7: FSM Apply — 注入 Intent
-      for (const intent of allIntents) {
-        const slot = this.resolveSlot(intent.issuerId)
-        if (slot < 0) continue
-
-        const runtime = runtimes.get(slot)
-        const student = this.students.get(intent.issuerId)
-        if (!runtime || !student) continue
-
-        // 滑动窗口验证
-        if (intent.type === 'EX_CAST') {
-          if (!this.isInWindow(slot)) {
-            errors.push({
-              frame,
-              issuerId: intent.issuerId,
-              message: `card_order_violation`,
-              type: 'OUT_OF_WINDOW',
-            })
-            // 不阻断推演，仅记录
-          }
-          const skillCostScaled = (student.Skills.E.Cost[(this.formation.skillLevels?.[slot] ?? 5) - 1]) * COST_SCALE
-          if (availableCost < skillCostScaled) {
-            errors.push({
-              frame,
-              issuerId: intent.issuerId,
-              message: `Cost exceeded at frame ${frame}`,
-              type: 'COST_EXCEEDED',
-            })
-          }
-          availableCost = Math.max(0, availableCost - skillCostScaled)
+      const requestedRef = this.intentSkillRef(intent, ownerStudent, this.formation.gearLevels?.[ownerSlot] ?? 1)
+      let cardPlan: CardPlayPlan | undefined
+      if (intent.type === 'EX_CAST') {
+        const prepared = state.cards.preparePlay(ownerSlot, requestedRef, intent)
+        if (typeof prepared === 'string') {
+          errors.push({
+            frame,
+            issuerId: intent.issuerId,
+            message: prepared,
+            type: prepared === 'card_order_violation' ? 'OUT_OF_WINDOW' : 'INVALID_CONDITION',
+          })
+          continue
         }
+        cardPlan = prepared
+      }
 
-        this.applyIntent(intent, runtime, student, frame, actionLogs)
-
-        // EX_CAST 成功后推进滑动窗口
-        if (intent.type === 'EX_CAST') {
-          this.advanceWindow(slot)
+      const executionSlot = cardPlan?.executorSlot ?? ownerSlot
+      const runtime = state.runtimes.get(executionSlot)
+      const student = this.students.get(cardPlan?.executorStudentId ?? intent.issuerId)
+      const ref = cardPlan?.skillRef ?? requestedRef
+      if (!runtime || !student) {
+        errors.push({ frame, issuerId: intent.issuerId, message: 'skill executor is not in formation', type: 'INVALID_TARGET' })
+        continue
+      }
+      const executionIntent: Intent = { ...intent, issuerId: student.Id, skillRef: ref }
+      const skill = resolveSkill(student, ref, this.getSkillLevels(executionSlot))
+      if (!skill) {
+        errors.push({ frame, issuerId: intent.issuerId, message: 'skill reference is not available', type: 'INVALID_CONDITION' })
+        continue
+      }
+      // friend-marker 机制：变形技能固定作用于首次选定的目标，并按激活状态选 Buff 数值行。
+      const castMechanic = rules.mechanics.cardMechanic(student.Id)
+      // friend-marker 机制：基础施放不应用错位的变形 Buff（其数据位于基础 EX Effects）。
+      if (castMechanic?.kind === 'friend-marker' && ref.kind === 'ex' && castMechanic.buffStat) {
+        skill.effects = skill.effects.filter(effect => !(effect.Type === 'Buff' && effect.Stat === castMechanic.buffStat))
+      }
+      if (castMechanic?.kind === 'friend-marker'
+        && ref.kind === 'extra_ex'
+        && castMechanic.transformSkillRef.kind === 'extra_ex'
+        && ref.extraSkillId === castMechanic.transformSkillRef.extraSkillId) {
+        // 变形技能固定作用于好友槽位（莉音复制时 executorSlot 才是好友机制所有者）。
+        const markerSlot = cardPlan?.executorSlot ?? ownerSlot
+        const markers = state.cards.markerTargetsOf(markerSlot)
+        if (markers.length > 0) {
+          const active = state.cards.markerActive(markerSlot)
+          executionIntent.targetIds = markers
+          if (castMechanic.buffStat && skill.effects.length === 0) {
+            const baseBuff = student.Skills.E.Effects.find(effect => effect.Type === 'Buff' && effect.Stat === castMechanic.buffStat)
+            if (baseBuff) skill.effects = [baseBuff]
+          }
+          skill.effects = skill.effects.map(effect => {
+            if (effect.Type !== 'Buff' || effect.Stat !== castMechanic.buffStat) return effect
+            const rows = effect.Value ?? []
+            const counter = castMechanic.counter
+            const row = active
+              ? (rows[counter?.activeValueRowIndex ?? 1] ?? rows[0])
+              : (rows[counter?.baseValueRowIndex ?? 0] ?? rows[1] ?? rows[0])
+            return { ...effect, Target: 'Ally', Value: [row] }
+          })
         }
       }
-    }
-
-    // Step 8: Logging (already captured in actionLogs)
-
-    // 仅在用户显式设置了 deckOrder 时暴露窗口信息
-    let windowInfo:
-      | { left: number; size: number; deck: number[]; hand: []; drawPile: [] }
-      | undefined
-    if (this.formation.deckOrder) {
-      windowInfo = {
-        left: this.windowLeft,
-        size: this.formation.mode === 'normal' ? 3 : 5,
-        deck: this.formation.deckOrder,
-        hand: [],
-        drawPile: [],
+      const effectError = state.effects.validate(
+        executionIntent,
+        skill,
+        state.runtimes,
+        cardPlan?.allowExtraEx === true,
+        cardPlan?.copied === true,
+      )
+      if (effectError) {
+        errors.push({ frame, issuerId: intent.issuerId, message: effectError, type: effectError.includes('target') ? 'INVALID_TARGET' : 'INVALID_CONDITION' })
+        continue
       }
-    }
+      if (runtime.controlledUntil > frame) {
+        errors.push({ frame, issuerId: intent.issuerId, message: 'caster is controlled', type: 'COOLDOWN' })
+        continue
+      }
+      if (!Number.isInteger(skill.duration) || skill.duration < 0) {
+        errors.push({ frame, issuerId: intent.issuerId, message: 'skill action duration must be a non-negative integer', type: 'INVALID_CONDITION' })
+        continue
+      }
+      if (!isInterruptible(runtime.currentState)) {
+        errors.push({ frame, issuerId: intent.issuerId, message: 'caster is executing a non-interruptible action', type: 'COOLDOWN' })
+        continue
+      }
 
-    return {
-      maxFrame,
-      maxCost,
-      costHistory,
-      actionLogs,
-      errors,
-      effectAudit: [],
-      effectLedger: [],
-      window: windowInfo,
-      finalRuntimes: runtimes,
-      finalSummons: [],
+      const isEx = skill.action === 'EX'
+      const baseCost = cardPlan ? state.cards.effectiveBaseCost(cardPlan, skill.cost) : skill.cost
+      const cost = state.effects.getEffectiveCost(student.Id, baseCost) * COST_SCALE
+      const borrowLimit = state.effects.getCostBorrowLimit(student.Id) * COST_SCALE
+      if (isEx && !state.cost.canPay(cost, borrowLimit)) {
+        errors.push({ frame, issuerId: intent.issuerId, message: `Cost exceeded at frame ${frame}`, type: 'COST_EXCEEDED' })
+        continue
+      }
+      const actionId = state.actions.startSkill(executionIntent, intent.issuerId, runtime, skill, frame)
+      if (isEx) {
+        state.cost.pay(cost)
+        if (state.cost.availableCost < 0) {
+          debt.current = { studentId: student.Id, skillRef: ref }
+          state.effects.recordCostDebt(student.Id, ref, frame, state.cost.availableCost / COST_SCALE)
+        }
+        state.effects.consumeCostModifiers(student.Id, frame)
+        if (cardPlan) {
+          const cardResult = state.cards.commitPlay(cardPlan, intent, frame)
+          // 贝壳只由好友本人成功施放 EX 累加；莉音复制施放不算好友本人施放。
+          if (!cardPlan.copied) state.cards.observeMarkerAllyEx(executionSlot, frame)
+          for (const hanakoId of cardResult.waterBuffStudentIds) {
+            const hanakoSlot = this.resolveSlot(hanakoId)
+            const hanako = this.students.get(hanakoId)
+            if (hanakoSlot < 0 || !hanako) continue
+            const passiveRef: SkillRef = { kind: 'extra_passive' }
+            const passive = resolveSkill(hanako, passiveRef, this.getSkillLevels(hanakoSlot))
+            if (!passive) continue
+            state.effects.schedule({
+              id: `water-gauge-${hanakoId}-${frame}`,
+              frame,
+              type: 'SS_TRIGGER',
+              issuerId: hanakoId,
+              targetIds: [hanakoId],
+              priority: 2,
+              skillRef: passiveRef,
+              triggerSource: 'automatic',
+              trigger: { source: 'automatic' },
+            }, passive, frame, state.runtimes)
+          }
+        }
+      }
+      state.effects.schedule(executionIntent, skill, frame, state.runtimes, actionId)
+      state.actions.advance(frame)
     }
   }
 
@@ -449,128 +428,6 @@ export class SimulationEngine {
   // Tick Pipeline — 各步骤
   // ═══════════════════════════════════════════════
 
-  /** Step 2: 更新 CC 控制状态 */
-  private updateCC(runtimes: Map<number, StudentRuntimeState>, frame: number): void {
-    for (const rt of runtimes.values()) {
-      if (rt.controlledUntil > 0 && rt.controlledUntil <= frame) {
-        rt.controlledUntil = 0
-        rt.currentState = StudentState.IDLE
-      }
-    }
-  }
-
-  /** Step 3: 步进所有角色的动作帧 */
-  private tickAllFSM(
-    runtimes: Map<number, StudentRuntimeState>,
-    frame: number,
-  ): void {
-    for (const [, rt] of runtimes) {
-      const student = this.students.get(rt.studentId)
-      if (!student) continue
-
-      // 如果动作结束，回 IDLE
-      if (rt.currentActionEndFrame > 0 && frame >= rt.currentActionEndFrame) {
-        rt.previousState = rt.currentState
-        rt.currentState = StudentState.IDLE
-      }
-    }
-  }
-
-  /** Step 4: 触发器调度 */
-  private tickScheduler(
-    runtimes: Map<number, StudentRuntimeState>,
-    frame: number,
-  ): void {
-    for (const [slot, rt] of runtimes) {
-      const student = this.students.get(rt.studentId)
-      if (!student) continue
-
-      // NS 触发判定
-      if (rt.currentActionEndFrame > 0 && frame >= rt.currentActionEndFrame) {
-        const ns = getNsSkill(student)
-        if (ns) {
-          this.scheduler.scheduleNs(
-            {
-              student,
-              frame,
-              attackCount: rt.attackCount,
-              shotIndex: rt.currentShotIndex,
-              runtime: rt,
-            },
-            slot,
-            rt.studentId,
-          )
-        }
-      }
-    }
-  }
-
-  /** Step 5: 收集本帧用户 Intent */
-  private resolveIntents(intents: Intent[], frame: number): Intent[] {
-    return intents.filter(i => i.frame === frame)
-  }
-
-  /** Step 7: 注入 Intent → FSM 跳转 */
-  private applyIntent(
-    intent: Intent,
-    runtime: StudentRuntimeState,
-    student: Student,
-    frame: number,
-    logs: ActionRecord[],
-  ): void {
-    if (!isInterruptible(runtime.currentState)) return
-
-    let targetState: StudentState
-    let duration: number
-    let actionType: ActionRecord['actionType']
-
-    switch (intent.type) {
-      case 'EX_CAST':
-        targetState = StudentState.EX
-        duration = student.Skills.E.Duration
-        actionType = 'EX'
-        break
-      case 'NS_TRIGGER': {
-        const ns = getNsSkill(student)
-        targetState = StudentState.NS
-        duration = ns ? getNsDuration(ns) : 60
-        actionType = 'NS'
-        break
-      }
-      case 'SS_TRIGGER':
-        targetState = StudentState.SS_CAST
-        duration = 60
-        actionType = 'SS'
-        break
-      case 'CC_APPLY':
-        targetState = StudentState.CC
-        duration = 120
-        actionType = 'CC'
-        break
-      default:
-        return
-    }
-
-    const prevEndFrame = runtime.currentActionEndFrame
-
-    runtime.previousState = runtime.currentState
-    runtime.currentState = targetState
-    runtime.currentActionStartFrame = frame
-    runtime.currentActionEndFrame = frame + duration
-
-    logs.push({
-      recordId: `${this.logIdCounter++}`,
-      studentId: runtime.studentId,
-      slotIndex: runtime.slotIndex,
-      actionType,
-      startFrame: frame,
-      effectFrame: frame + getEffectFrame(student, intent.type),
-      endFrame: frame + duration,
-      wasInterrupted: false,
-      isManualOverride: false,
-      interruptedAt: prevEndFrame > frame ? frame : undefined,
-    })
-  }
 
   // ═══════════════════════════════════════════════════
   // 辅助
@@ -609,40 +466,11 @@ export class SimulationEngine {
     }
   }
 
-  private intentSkillRef(intent: Intent, student: Student): SkillRef {
+  private intentSkillRef(intent: Intent, student: Student, gearLevel: number): SkillRef {
     if (intent.skillRef) return intent.skillRef
     if (intent.type === 'EX_CAST') return { kind: 'ex' }
-    if (intent.type === 'NS_TRIGGER') return student.HasGear && student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
+    if (intent.type === 'NS_TRIGGER') return gearLevel > 0 && student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
     return { kind: 'extra_passive' }
-  }
-
-  private applyResolvedIntent(
-    intent: Intent,
-    runtime: StudentRuntimeState,
-    student: Student,
-    skill: ResolvedSkill,
-    frame: number,
-    logs: ActionRecord[],
-  ): boolean {
-    if (!isInterruptible(runtime.currentState)) return false
-    const state = skill.action === 'EX' ? StudentState.EX : skill.action === 'NS' ? StudentState.NS : StudentState.SS_CAST
-    runtime.previousState = runtime.currentState
-    runtime.currentState = state
-    runtime.currentActionStartFrame = frame
-    runtime.currentActionEndFrame = frame + skill.duration
-    const effectFrame = skill.effects.find(effect => effect.ApplyFrame != null)?.ApplyFrame ?? 0
-    logs.push({
-      recordId: `${this.logIdCounter++}`,
-      studentId: student.Id,
-      slotIndex: runtime.slotIndex,
-      actionType: skill.action,
-      startFrame: frame,
-      effectFrame: frame + effectFrame,
-      endFrame: frame + skill.duration,
-      wasInterrupted: false,
-      isManualOverride: intent.triggerSource === 'manual',
-    })
-    return true
   }
 
   /** 通过 studentId 反查 slotIndex */
@@ -653,83 +481,4 @@ export class SimulationEngine {
     return -1
   }
 
-  /** 滑动窗口验证
-   *
-   * 日服"全技能顺序预设"机制:
-   * - 常规 4+2: 队列长度 6, 窗口大小 3
-   * - 大决战 6+4: 队列长度 10, 窗口大小 5
-   *
-   * 排队: 所有在场学生按 deckOrder 排列
-   * 发牌: 战斗开始发 windowSize 张 → 窗口 [0, windowSize)
-   * 消耗: 每次 EX_CAST 消耗窗口内该卡及左侧所有卡, 窗口右移
-   *
-   * @returns true = 在窗口内可释放; false = 越界（不阻断推演）
-   */
-  private isInWindow(slot: number): boolean {
-    // 用户未设置 deckOrder → 不验证牌序
-    if (!this.formation.deckOrder) return true
-
-    const windowSize = this.formation.mode === 'normal' ? 3 : 5
-    const deck = this.formation.deckOrder
-
-    if (deck.length === 0) return true
-
-    const slotPos = deck.indexOf(slot)
-    if (slotPos < 0) return true
-
-    const inWindow = slotPos >= this.windowLeft && slotPos < this.windowLeft + windowSize
-    return inWindow
-  }
-
-  /**
-   * 推进滑动窗口：消耗 slot 所在的卡牌及左侧所有卡牌
-   * 应在 EX_CAST 成功应用后调用
-   */
-  private advanceWindow(slot: number): void {
-    if (!this.formation.deckOrder) return
-    const deck = this.formation.deckOrder
-
-    const slotPos = deck.indexOf(slot)
-    if (slotPos >= this.windowLeft) {
-      this.windowLeft = slotPos + 1
-    }
-  }
-
-  /** 将 Intent 临时注入到 lanes.skills 中供 costSystem 计算 */
-  private injectIntentsToLanes(intents: Intent[]): void {
-    for (const lane of this.lanes) lane.skills = []
-    for (const intent of intents) {
-      if (intent.type !== 'EX_CAST') continue
-      const slot = this.resolveSlot(intent.issuerId)
-      if (slot < 0) continue
-      const student = this.students.get(intent.issuerId)
-      const exLevel = this.formation.skillLevels?.[slot] ?? 5
-      this.lanes[slot].skills.push({
-        type: 'ex',
-        name: student?.Skills.E.Name ?? '',
-        startFrame: intent.frame,
-        studentId: intent.issuerId,
-        targetId: intent.targetIds[0],
-        skillCost: student ? student.Skills.E.Cost[exLevel - 1] : 0,
-        skillDuration: student?.Skills.E.Duration,
-      })
-    }
-  }
-}
-
-/** 取技能首个效果的 ApplyFrame；无效果或无 ApplyFrame 时返回 0 */
-function getEffectFrame(student: Student, intentType: Intent['type']): number {
-  let effects: { ApplyFrame?: number }[] = []
-  if (intentType === 'EX_CAST') {
-    effects = student.Skills.E.Effects
-  } else if (intentType === 'NS_TRIGGER') {
-    const ns = getNsSkill(student)
-    if (ns) effects = ns.Effects
-  } else if (intentType === 'SS_TRIGGER') {
-    effects = student.Skills.EP.Effects
-  }
-  for (const ef of effects) {
-    if (ef.ApplyFrame != null) return ef.ApplyFrame
-  }
-  return 0
 }

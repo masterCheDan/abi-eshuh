@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useSquadStore } from '../../stores/useSquadStore'
+import { assignStudent, removeStudent } from '../../stores/squadTimeline'
 import { useI18n, tpl } from '../../i18n'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { StudentSelectDialog } from '../student-panel/StudentSelectDialog'
@@ -12,8 +13,6 @@ export function SquadSlotComponent({ slotIndex }: SquadSlotProps) {
   const { t } = useI18n()
   const [showDialog, setShowDialog] = useState(false)
   const slot = useSquadStore((s) => s.config.slots[slotIndex])
-  const assignStudent = useSquadStore((s) => s.assignStudent)
-  const removeStudent = useSquadStore((s) => s.removeStudent)
 
   const allSlots = useSquadStore((s) => s.config.slots)
   const assignedIds = useMemo(

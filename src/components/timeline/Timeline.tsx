@@ -2,7 +2,11 @@ import { useRef, useState, useEffect } from 'react'
 import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSimulationStore, getSimulationSummary } from '../../stores/useSimulationStore'
 import { useBossStore } from '../../stores/useBossStore'
+import { useSquadStore } from '../../stores/useSquadStore'
+import { rules } from '../../domain/rules/GameRules'
+import { scheduleNsBlocks } from '../../utils/nsSchedule'
 import { TimelineLane } from './TimelineLane'
+import { NsSuggestionTrack } from './NsSuggestionTrack'
 import { AttackTrack } from './AttackTrack'
 import { BuffTrack } from './BuffTrack'
 import { TriggerTrack } from './TriggerTrack'
@@ -20,6 +24,7 @@ const MAX_ZOOM = 8
 export function Timeline() {
   const { t } = useI18n()
   const lanes = useTimelineStore((s) => s.lanes)
+  const frameLimit = useTimelineStore(s => s.frameLimit)
   const simResult = useSimulationStore((s) => s.result)
   const simComputing = useSimulationStore((s) => s.computing)
   const summary = getSimulationSummary(simResult)
@@ -51,7 +56,29 @@ export function Timeline() {
   const bossDurationSec = selectedBoss
     ? (selectedBoss.BattleDuration[selectedDifficulty] ?? 180)
     : 180
-  const totalFrames = bossDurationSec * 30
+  const totalFrames = frameLimit ?? bossDurationSec * 30
+
+  /** Legacy prequeue never writes an automatic fact. Anything outside the reviewed engine scheduler stays a suggestion. */
+  const refreshNsSuggestions = () => {
+    const timeline = useTimelineStore.getState()
+    const squadSlots = useSquadStore.getState().config.slots
+    const suggestions = timeline.lanes.flatMap(lane => {
+      if (!lane.student) return []
+      const gearLevel = squadSlots[lane.slotIndex]?.gearLevel ?? 1
+      const rule = rules.nsTrigger.rule(lane.student.Id)
+      if (!rule) return []
+      const blocks = scheduleNsBlocks({ lane, student: lane.student, rule, totalFrames, gearLevel })
+      const reviewed = rules.nsScheduling.eligibility(lane.student, gearLevel).eligible
+      const intervalCandidates = reviewed ? [] : blocks.automatic.map(block => ({
+        id: `review-${block.eventId ?? `${lane.slotIndex}-${block.startFrame}`}`,
+        slotIndex: lane.slotIndex,
+        block: { ...block, eventId: `ns-confirmed-${block.eventId ?? `${lane.slotIndex}-${block.startFrame}`}`,
+          triggerSource: 'manual' as const, trigger: { source: 'manual' as const, reasons: ['interval' as const] } },
+      }))
+      return [...blocks.suggestions, ...intervalCandidates]
+    })
+    timeline.replaceSuggestions(suggestions)
+  }
 
   const pxPerFrame = BASE_PX_PER_FRAME * zoom
   const totalWidth = totalFrames * pxPerFrame
@@ -113,6 +140,10 @@ export function Timeline() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={refreshNsSuggestions} className="ba-cut-btn px-1.5 py-0.5 text-[10px] text-gray-300"
+            style={{ background: 'var(--bg-surface-alt)' }} title="生成尚未通过自动调度审查的 NS 待确认建议；不会写入自动施放事实">
+            ⏱ 建议
+          </button>
           <button
             onClick={toggleScrollMode}
             className="ba-cut-btn px-1.5 py-0.5 text-[10px] text-gray-300"
@@ -139,6 +170,7 @@ export function Timeline() {
         </div>
       </div>
 
+      {frameLimit != null && <button className="text-xs text-left text-amber-300" onClick={() => useTimelineStore.getState().setTotalFrames(null)}>导入时长：{frameLimit} 帧；点击恢复 Boss 默认时长</button>}
       {/* 标尺 + 轨道共用同一个水平滚动容器 */}
       <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
         <div style={{ width: totalWidth, minHeight: '100%', paddingBottom: 48 }} className="relative">
@@ -164,7 +196,8 @@ export function Timeline() {
                 />
                 {!isCollapsed && (
                   <>
-                    <AttackTrack lane={lane} pxPerFrame={pxPerFrame} />
+                    <NsSuggestionTrack lane={lane} pxPerFrame={pxPerFrame} />
+                    <AttackTrack lane={lane} pxPerFrame={pxPerFrame} totalFrames={totalFrames} />
                     <BuffTrack lane={lane} pxPerFrame={pxPerFrame} />
                     <TriggerTrack lane={lane} pxPerFrame={pxPerFrame} />
                   </>

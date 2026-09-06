@@ -5,10 +5,7 @@ import { SimulationEngine } from '../core/simulationEngine'
 import type { Formation, Intent } from '../model/types'
 import { COST_SCALE } from './costSystem'
 import { costBorrowLimitAtFrame } from '../../utils/costCalc'
-import {
-  COST_OVERLOAD_DESCRIPTION_PATTERN,
-  COST_OVERLOAD_RULES,
-} from './costOverloadRules'
+import { rules } from '../../domain/rules/GameRules'
 
 const database = studentData as unknown as StudentDB
 
@@ -271,9 +268,9 @@ describe('CostOverload data coverage', () => {
   it('registers every EX description containing CostOverload', () => {
     const discovered = Object.values(database)
       .filter(student => [student.Skills.E, ...(student.Skills.E.ExtraSkills ?? [])]
-        .some(skill => COST_OVERLOAD_DESCRIPTION_PATTERN.test(skill.Desc ?? '')))
+        .some(skill => rules.cost.overloadDescriptionPattern.test(skill.Desc ?? '')))
       .map(student => student.Id)
       .sort((left, right) => left - right)
-    expect(discovered).toEqual(Object.keys(COST_OVERLOAD_RULES).map(Number).sort((left, right) => left - right))
+    expect(discovered).toEqual(Object.keys(rules.cost.rules).map(Number).sort((left, right) => left - right))
   })
 })

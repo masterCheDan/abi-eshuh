@@ -52,6 +52,7 @@ export interface LanguagePack {
     target_none: string
     extra_skills: string
     ns_auto: string
+    ns_manual: string
     ss_passive: string
     drag: string
     terrain_adapt: string
@@ -60,6 +61,8 @@ export interface LanguagePack {
     cost_overload: string
     form_change: string
     parent_triggered: string
+    gear_title: string
+    gear_none: string
   }
   timeline: {
     title: string
@@ -210,6 +213,7 @@ export const zh: LanguagePack = {
     target_none: '未选择',
     extra_skills: '形态切换后技能',
     ns_auto: '{n} 帧 · 自动触发',
+    ns_manual: '{n} 帧 · 需人工确认触发',
     ss_passive: '副技能 · 常驻',
     drag: '⠿ 拖拽',
     terrain_adapt: '{terrain}适性',
@@ -218,6 +222,8 @@ export const zh: LanguagePack = {
     cost_overload: '欠费施放',
     form_change: '形态切换',
     parent_triggered: '⚡ 由父技能触发，无需手动释放',
+    gear_title: '爱用品（NS 强化）',
+    gear_none: '未装备',
   },
   timeline: {
     title: '时间轴预览',
@@ -274,9 +280,9 @@ export const zh: LanguagePack = {
   card_order: {
     title: '牌序',
     window: '窗口 {n}',
-    enabled: '已启用',
-    disabled: '未启用',
-    disabled_hint: '点击"已启用"按钮后自动按编队顺序生成初始牌序，并可调整顺序。',
+    enabled: '自定义牌序',
+    disabled: '自动推断',
+    disabled_hint: '未自定义牌序：始终按时间轴技能贪心推断发牌顺序并校验合法性。点击"自定义牌序"可手动设置初始牌序。',
     empty_hint: '牌序为空，点击下方自由学生添加到牌序中。',
     help: '点击两张卡交换位置 · 悬停卡可 × 移除 · 点击 FREE 学生添加',
     free: 'FREE',

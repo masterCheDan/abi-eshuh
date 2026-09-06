@@ -9,24 +9,27 @@
 
 import type { StudentLane } from '../types/timeline'
 import type { Student } from '../types/student'
+import type { SlotLevels } from '../types/squad'
 import type { Intent, BattleEnv, Formation, SkillRef } from '../engine/model/types'
 import { PRIORITY } from '../engine/model/fsm'
 import { SimulationEngine } from '../engine/core/simulationEngine'
-import { useSquadStore } from '../stores/useSquadStore'
+import { normalizeTrigger } from '../domain/triggerEvidence'
 
 // ═══════════════════════════════════════════════════
 // 1. Store → Engine Input
 // ═══════════════════════════════════════════════════
 
 /** 将时间轴事实 → Engine Intent（EX/NS/SS 均可手动录入）。 */
-export function lanesToIntents(lanes: StudentLane[]): Intent[] {
+export function lanesToIntents(lanes: StudentLane[], slotLevels: ReadonlyArray<SlotLevels>): Intent[] {
   const intents: Intent[] = []
   let idCounter = 0
 
   for (const lane of lanes) {
     if (!lane.student) continue
     for (const skill of lane.skills) {
-      const skillRef = skill.skillRef ?? inferSkillRef(skill.type, lane.student)
+      const evidence = normalizeTrigger(skill)
+      const gearLevel = slotLevels[lane.slotIndex]?.gearLevel ?? 1
+      const skillRef = skill.skillRef ?? inferSkillRef(skill.type, lane.student, gearLevel)
       intents.push({
         id: skill.eventId ?? `skill-${idCounter++}`,
         frame: skill.startFrame,
@@ -34,10 +37,10 @@ export function lanesToIntents(lanes: StudentLane[]): Intent[] {
         issuerId: skill.studentId,
         targetIds: skill.targetIds ?? [skill.targetId ?? skill.studentId],
         targetSummonIds: skill.targetSummonIds,
+        targetSummonRefs: skill.targetSummonRefs,
         priority: skillRef.kind === 'ex' || skillRef.kind === 'extra_ex' ? PRIORITY.EX_CAST : skillRef.kind === 'public' || skillRef.kind === 'gear_public' ? PRIORITY.NS_TRIGGER : PRIORITY.SS_TRIGGER,
         skillRef,
-        triggerSource: skill.triggerSource ?? 'manual',
-        trigger: skill.trigger ?? { source: skill.triggerSource ?? 'manual' },
+        ...('error' in evidence ? { triggerSource: skill.triggerSource, trigger: skill.trigger } : evidence),
       })
     }
   }
@@ -45,9 +48,9 @@ export function lanesToIntents(lanes: StudentLane[]): Intent[] {
   return intents
 }
 
-function inferSkillRef(type: StudentLane['skills'][number]['type'], student: Student): SkillRef {
+function inferSkillRef(type: StudentLane['skills'][number]['type'], student: Student, gearLevel: number): SkillRef {
   if (type === 'ex') return { kind: 'ex' }
-  if (type === 'ns') return student.HasGear && student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
+  if (type === 'ns') return gearLevel > 0 && student.Skills.G ? { kind: 'gear_public' } : { kind: 'public' }
   return { kind: 'extra_passive' }
 }
 
@@ -55,22 +58,22 @@ function inferSkillRef(type: StudentLane['skills'][number]['type'], student: Stu
 export function buildFormation(
   lanes: StudentLane[],
   /** 用户设置的初始牌序 (slotIndex 数组), 无则传入 null */
-  deckOrder?: number[] | null,
+  deckOrder: number[] | null | undefined,
+  /** 每槽位技能等级/养成配置（index 与 slotIndex 对齐）。 */
+  slotLevels: ReadonlyArray<SlotLevels>,
 ): Formation {
   const sorted = [...lanes].sort((a, b) => a.slotIndex - b.slotIndex)
-
-  // 从 squad store 读取各槽位的 EX 等级
-  const slots = useSquadStore.getState().config.slots
 
   return {
     mode: sorted.length > 6 ? 'total_assault' : 'normal',
     slots: sorted.map(l => l.student?.Id ?? null),
     deckOrder: deckOrder && deckOrder.length > 0 ? deckOrder : undefined,
-    skillLevels: sorted.map(l => slots[l.slotIndex]?.exLevel ?? 5),
-    publicSkillLevels: sorted.map(l => slots[l.slotIndex]?.nsLevel ?? 10),
-    passiveSkillLevels: sorted.map(l => slots[l.slotIndex]?.ssLevel ?? 10),
-    starLevels: sorted.map(l => slots[l.slotIndex]?.starLevel ?? l.student?.StarGrade ?? 0),
-    uniqueWeaponLevels: sorted.map(l => slots[l.slotIndex]?.uniqueWeaponLevel ?? 0),
+    skillLevels: sorted.map(l => slotLevels[l.slotIndex]?.exLevel ?? 5),
+    publicSkillLevels: sorted.map(l => slotLevels[l.slotIndex]?.nsLevel ?? 10),
+    passiveSkillLevels: sorted.map(l => slotLevels[l.slotIndex]?.ssLevel ?? 10),
+    starLevels: sorted.map(l => slotLevels[l.slotIndex]?.starLevel ?? l.student?.StarGrade ?? 0),
+    uniqueWeaponLevels: sorted.map(l => slotLevels[l.slotIndex]?.uniqueWeaponLevel ?? 0),
+    gearLevels: sorted.map(l => slotLevels[l.slotIndex]?.gearLevel ?? 1),
   }
 }
 
@@ -89,30 +92,48 @@ export function buildBattleEnv(
 // 2. Engine 运行
 // ═══════════════════════════════════════════════════
 
+/** 一键运行所需的完整纯输入。 */
+export interface RunSimulationInput {
+  nsScheduling?: import('./model/types').NsSchedulingConfig
+  maxFrame?: number
+  lanes: StudentLane[]
+  students: Map<number, Student>
+  /** 每槽位技能等级/养成配置（index 与 slotIndex 对齐）。 */
+  slotLevels: ReadonlyArray<SlotLevels>
+  /** 用户设置的初始牌序 (slotIndex 数组)。 */
+  deckOrder?: number[] | null
+  bossId?: number
+  difficulty?: number
+  armorType?: string
+  terrain?: number
+}
+
 /**
  * 一键运行：Store lanes → Engine.simulate() → SimulationResult
  *
- * 用法：
- *   const result = runSimulation(storeLanes, storeStudents)
- *   console.log(result.costHistory, result.actionLogs, result.errors)
+ * 纯函数：所有输入（含槽位配置）由调用方显式传入，不再读取任何 store。
  */
-export function runSimulation(
-  lanes: StudentLane[],
-  students: Map<number, Student>,
-  bossId = 0,
-  difficulty = 5,
-  armorType = 'LightArmor',
-  terrain = 0,
-  deckOrder?: number[] | null,
-) {
+export function runSimulation(input: RunSimulationInput) {
+  const {
+    lanes,
+    students,
+    slotLevels,
+    deckOrder = null,
+    bossId = 0,
+    difficulty = 5,
+    armorType = 'LightArmor',
+    terrain = 0,
+    maxFrame = 5400,
+  } = input
+
   const engine = new SimulationEngine()
-  const env = buildBattleEnv(bossId, difficulty, armorType, terrain)
-  const formation = buildFormation(lanes, deckOrder)
+  const env = buildBattleEnv(bossId, difficulty, armorType, terrain, maxFrame)
+  const formation = buildFormation(lanes, deckOrder, slotLevels)
 
   engine.loadBattle(env, formation, students)
 
-  const intents = lanesToIntents(lanes)
-  return engine.simulate(intents)
+  const intents = lanesToIntents(lanes, slotLevels)
+  return engine.simulate(intents, input.nsScheduling)
 }
 
 // ═══════════════════════════════════════════════════

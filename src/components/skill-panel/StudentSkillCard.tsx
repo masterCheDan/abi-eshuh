@@ -4,14 +4,18 @@ import { useTimelineStore } from '../../stores/useTimelineStore'
 import { useSquadStore } from '../../stores/useSquadStore'
 import { ExSkillCard } from './ExSkillCard'
 import { ExtraSkillCard } from './ExtraSkillCard'
-import { getNsSkill } from '../../utils/nsTrigger'
+import { nsSkillFor } from '../../domain/student'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { SkillIcon } from './SkillIcon'
 import { useBossStore } from '../../stores/useBossStore'
 import { useI18n, tpl } from '../../i18n'
 import { TargetPicker } from './TargetPicker'
-import { fixedSkillTargetIds, skillTargetPolicy, type SkillTargetPolicy } from '../../engine/system/skillTargeting'
+import { SummonTargetPicker } from './SummonTargetPicker'
+import { rules, type SkillTargetPolicy } from '../../domain/rules/GameRules'
 import { StudentRankSelector } from '../squad/StudentRankSelector'
+import { useSimulationStore } from '../../stores/useSimulationStore'
+import { activeSummonsAtFrame } from '../../engine'
+import { automaticNsError } from '../../domain/triggerEvidence'
 
 interface StudentSkillCardProps {
     student: Student
@@ -31,7 +35,7 @@ const TERRAIN_KEYS = ['Street', 'Outdoor', 'Indoor'] as const
 type ManualTargetPolicy = Extract<SkillTargetPolicy, 'select-ally' | 'select-any'>
 
 function resolvedTargetIds(policy: SkillTargetPolicy, studentId: number, selected: number[]): number[] {
-    return policy === 'select-ally' || policy === 'select-any' ? selected : fixedSkillTargetIds(policy, studentId)
+    return policy === 'select-ally' || policy === 'select-any' ? selected : rules.targeting.fixedTargetIds(policy, studentId)
 }
 
 export function StudentSkillCard({ student }: StudentSkillCardProps) {
@@ -45,7 +49,8 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
     const selectedBossTerrain = useBossStore((s) => s.selectedTerrain)
 
 
-    const ns = getNsSkill(student)
+    const gearLevel = slot?.gearLevel ?? 1
+    const ns = nsSkillFor(student, gearLevel)
     const ep = student.Skills.EP
 
     const isStriker = student.SquadType === 'Main'
@@ -122,8 +127,23 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
                         </div>
                     </div>
                     {slot && (
-                        <div className="mt-1.5">
+                        <div className="mt-1.5 space-y-1.5">
                             <StudentRankSelector slotIndex={slot.index} />
+                            {student.HasGear && (
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.skill.gear_title}</span>
+                                    <select
+                                        value={slot.gearLevel}
+                                        onChange={(e) => useSquadStore.getState().setGearLevel(slot.index, Number(e.target.value) as 0 | 1 | 2)}
+                                        className="text-[10px] px-1 py-0.5 rounded border"
+                                        style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
+                                    >
+                                        <option value={0}>{t.skill.gear_none}</option>
+                                        <option value={1}>T1</option>
+                                        <option value={2}>T2</option>
+                                    </select>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -175,14 +195,20 @@ export function StudentSkillCard({ student }: StudentSkillCardProps) {
 }
 
 /** NS 子卡片组件 */
-function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: NonNullable<ReturnType<typeof getNsSkill>>; slotIndex: number; nsLevel: number }) {
+function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: NonNullable<ReturnType<typeof nsSkillFor>>; slotIndex: number; nsLevel: number }) {
     const { t } = useI18n()
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
     const slots = useSquadStore((s) => s.config.slots)
+    const gearLevel = slots[slotIndex]?.gearLevel ?? 1
     const squadStudents = useMemo(() => slots.filter(slot => slot.student).map(slot => slot.student!), [slots])
     const [targetIds, setTargetIds] = useState<number[]>([])
-    const ref = student.HasGear && student.Skills.G ? { kind: 'gear_public' } as const : { kind: 'public' } as const
-    const policy = skillTargetPolicy(ns.Effects)
+    const [targetSummonIds, setTargetSummonIds] = useState<string[]>([])
+    const simulation = useSimulationStore((s) => s.result)
+    const activeSummons = useMemo(() => activeSummonsAtFrame(simulation?.effectAudit, 0), [simulation?.effectAudit])
+    const ref = gearLevel > 0 && student.Skills.G ? { kind: 'gear_public' } as const : { kind: 'public' } as const
+    const nsRule = rules.nsTrigger.rule(student.Id)
+    const needsConfirmation = automaticNsError(student, ref, ns.Effects, gearLevel, nsRule?.kind === 'interval' ? nsRule.seconds * 30 : 0) != null
+    const policy = rules.targeting.policy(ns.Effects)
     const selectedTargetIds = resolvedTargetIds(policy, student.Id, targetIds)
 
     const handleAddNs = () => {
@@ -193,6 +219,7 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
             studentId: student.Id,
             targetId: selectedTargetIds[0] ?? student.Id,
             targetIds: selectedTargetIds,
+            targetSummonIds,
             skillRef: ref,
             triggerSource: 'manual',
         })
@@ -219,13 +246,13 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
                     </div>
                     {ns.Duration && (
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {tpl(t.skill.ns_auto, { n: ns.Duration })}
+                            {tpl(needsConfirmation ? t.skill.ns_manual : t.skill.ns_auto, { n: ns.Duration })}
                         </div>
                     )}
                 </div>
             </div>
             <div className="px-3 pb-1">
-                {isManualTargetPolicy(policy) ? <TargetPicker options={targetOptions(policy, squadStudents, t.event_log.target_boss)} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} />
+                {isManualTargetPolicy(policy) ? <div className="space-y-2"><TargetPicker options={targetOptions(policy, squadStudents, t.event_log.target_boss)} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} /><SummonTargetPicker summons={activeSummons} selectedIds={targetSummonIds} onChange={setTargetSummonIds} /></div>
                     : <FixedTarget policy={policy} t={t} />}
             </div>
             <div className="flex items-center justify-end gap-1.5 px-3 pb-2.5 pt-1">
@@ -234,7 +261,7 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
                     onDragStart={(e) => {
                         e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
                             type: 'ns', name: ns.Name, startFrame: 0,
-                            studentId: student.Id, targetId: selectedTargetIds[0] ?? student.Id, targetIds: selectedTargetIds, skillRef: ref, triggerSource: 'manual',
+                            studentId: student.Id, targetId: selectedTargetIds[0] ?? student.Id, targetIds: selectedTargetIds, targetSummonIds, skillRef: ref, triggerSource: 'manual',
                         }))
                         e.dataTransfer.effectAllowed = 'copyMove'
                     }}
@@ -257,11 +284,15 @@ function NsSubCard({ student, ns, slotIndex, nsLevel }: { student: Student; ns: 
 /** SS 子卡片组件（ExtraPassive） */
 function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: Student['Skills']['EP']; slotIndex: number; ssLevel: number }) {
     const { t } = useI18n()
+    const autoSs = rules.skill.selfExBuffEpIds.has(student.Id)
     const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
     const slots = useSquadStore((s) => s.config.slots)
     const squadStudents = useMemo(() => slots.filter(slot => slot.student).map(slot => slot.student!), [slots])
     const [targetIds, setTargetIds] = useState<number[]>([])
-    const policy = skillTargetPolicy(ep.Effects)
+    const [targetSummonIds, setTargetSummonIds] = useState<string[]>([])
+    const simulation = useSimulationStore((s) => s.result)
+    const activeSummons = useMemo(() => activeSummonsAtFrame(simulation?.effectAudit, 0), [simulation?.effectAudit])
+    const policy = rules.targeting.policy(ep.Effects)
     const selectedTargetIds = resolvedTargetIds(policy, student.Id, targetIds)
 
     const handleAddSs = () => {
@@ -272,6 +303,7 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
             studentId: student.Id,
             targetId: selectedTargetIds[0] ?? student.Id,
             targetIds: selectedTargetIds,
+            targetSummonIds,
             skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
         })
     }
@@ -301,31 +333,39 @@ function SsSubCard({ student, ep, slotIndex, ssLevel }: { student: Student; ep: 
                 </div>
             </div>
             <div className="px-3 pb-1">
-                {isManualTargetPolicy(policy) ? <TargetPicker options={targetOptions(policy, squadStudents, t.event_log.target_boss)} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} />
+                {isManualTargetPolicy(policy) ? <div className="space-y-2"><TargetPicker options={targetOptions(policy, squadStudents, t.event_log.target_boss)} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} /><SummonTargetPicker summons={activeSummons} selectedIds={targetSummonIds} onChange={setTargetSummonIds} /></div>
                     : <FixedTarget policy={policy} t={t} />}
             </div>
             <div className="flex items-center justify-end gap-1.5 px-3 pb-2.5 pt-1">
-                <button
-                    draggable
-                    onDragStart={(e) => {
-                        e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
-                            type: 'ss', name: ep.Name, startFrame: 0,
-                            studentId: student.Id, targetId: selectedTargetIds[0] ?? student.Id, targetIds: selectedTargetIds,
-                            skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
-                        }))
-                        e.dataTransfer.effectAllowed = 'copyMove'
-                    }}
-                    className="text-[11px] px-2 py-0.5 rounded border cursor-grab active:cursor-grabbing"
-                    style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
-                >
-                    {t.skill.drag}
-                </button>
-                <button
-                    onClick={handleAddSs}
-                    className="text-[11px] px-2 py-0.5 rounded font-medium bg-amber-600 hover:bg-amber-500 text-white"
-                >
-                    {t.skill.add}
-                </button>
+                {autoSs ? (
+                    <span className="text-[10px] px-2 py-1 rounded" style={{ color: 'var(--accent-2)', background: 'rgba(245,158,11,0.12)' }}>
+                        {t.skill.parent_triggered}
+                    </span>
+                ) : (
+                    <>
+                        <button
+                            draggable
+                            onDragStart={(e) => {
+                                e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
+                                    type: 'ss', name: ep.Name, startFrame: 0,
+                                    studentId: student.Id, targetId: selectedTargetIds[0] ?? student.Id, targetIds: selectedTargetIds, targetSummonIds,
+                                    skillRef: { kind: 'extra_passive' }, triggerSource: 'manual',
+                                }))
+                                e.dataTransfer.effectAllowed = 'copyMove'
+                            }}
+                            className="text-[11px] px-2 py-0.5 rounded border cursor-grab active:cursor-grabbing"
+                            style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
+                        >
+                            {t.skill.drag}
+                        </button>
+                        <button
+                            onClick={handleAddSs}
+                            className="text-[11px] px-2 py-0.5 rounded font-medium bg-amber-600 hover:bg-amber-500 text-white"
+                        >
+                            {t.skill.add}
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     )

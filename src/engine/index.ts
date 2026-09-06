@@ -10,13 +10,21 @@ export type {
   Intent,
   SkillRef,
   TriggerSource,
+  ManualTriggerReason,
+  TriggerEvidence,
   BattleEnv,
   Formation,
   ActionRecord,
+  ActionEvent,
+  SchedulingDiagnostic,
+  NsSchedulingConfig,
+  NsSchedulingResult,
+  NsScheduleRecord,
   ActionType,
   SimulationError,
   SimulationResult,
   EffectAuditRecord,
+  SummonInstance,
   CardStateSnapshot,
   CardOrderSnapshot,
   StudentRuntimeState,
@@ -25,36 +33,26 @@ export type {
   ShareCodePayload,
   ShareCodePayloadV2,
   ShareCodeEventV2,
+  ShareCodePayloadV3,
+  ShareCodeEventV3,
 } from './model/types'
+
+// Summon target helpers (UI 辅助)
+export { activeSummonsAtFrame, summonTargetLabel } from './system/summonTargets'
 
 // FSM
 export {
-  canTransition,
   isInterruptible,
-  buildTransition,
-  applyTransition,
-  VALID_TRANSITIONS,
   PRIORITY,
 } from './model/fsm'
 
-// Trigger Scheduler
-export {
-  TriggerScheduler,
-  getNsSkill,
-  getNsDuration,
-} from './system/triggerScheduler'
-export type { NsTriggerContext, NsTriggerResult } from './system/triggerScheduler'
-
 // Cost System
 export {
-  computeCostTimeline,
-  costAtFrame,
   COST_SCALE,
   baseMaxCost,
   formationMaxCost,
   UNIQUE_WEAPON_4_SUPPORT_MAX_COST_BONUS,
 } from './system/costSystem'
-export type { CostFrame } from './system/costSystem'
 export { applyCostModifier, costModifierAtFrame, effectiveCostAtFrame } from './system/costModifier'
 export type { CostModifier, CostChangeValueType } from './system/costModifier'
 
@@ -69,4 +67,4 @@ export {
   runSimulation,
   mapToUiBlocks,
 } from './bridge'
-export type { UiTimelineBlock } from './bridge'
+export type { UiTimelineBlock, RunSimulationInput } from './bridge'

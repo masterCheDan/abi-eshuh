@@ -40,6 +40,9 @@ scripts/fetch-images.mjs
 # Data files (dynamic/auto-generated, not committed)
 data/raids.json
 
+# Manual audit notes (not committed)
+docs/ex-target-classification.md
+
 # OS files
 .DS_Store
 Thumbs.db

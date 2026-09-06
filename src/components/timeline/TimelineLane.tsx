@@ -9,12 +9,14 @@ import { DRAG_SKILL_KEY } from '../skill-panel/SkillAddForm'
 import { SkillIcon } from '../skill-panel/SkillIcon'
 import { StudentAvatar } from '../student-panel/StudentAvatar'
 import { studentSkillStyles } from '../../utils/studentColors'
+import { nsSkillFor } from '../../domain/student'
 import {
   computeCostSimulation,
   canAffordSkillAtFrame,
   costAtFrame,
   costFramesFromResult,
   effectiveSkillCostAtFrame,
+  skillBaseCost,
   COST_SCALE,
 } from '../../utils/costCalc'
 import type { CostFrame } from '../../utils/costCalc'
@@ -43,18 +45,15 @@ const TYPE_OPACITY: Record<SkillBlock['type'], number> = {
 }
 
 /** 从 SkillBlock + Student 提取 Effects 数组 */
-function getEffects(skill: SkillBlock, student: NonNullable<StudentLane['student']>) {
+function getEffects(skill: SkillBlock, student: NonNullable<StudentLane['student']>, gearLevel = 1) {
   if (skill.type === 'ex') return student.Skills.E.Effects
-  if (skill.type === 'ns') {
-    const pub = student.HasGear ? student.Skills.G : student.Skills.P
-    return pub.Effects
-  }
+  if (skill.type === 'ns') return nsSkillFor(student, gearLevel)?.Effects ?? []
   return student.Skills.EP.Effects
 }
 
 /** 判断技能是否含伤害效果 */
-function isDamageSkill(skill: SkillBlock, student: NonNullable<StudentLane['student']>): boolean {
-  return getEffects(skill, student).some((ef) => ef.Type === 'Damage')
+function isDamageSkill(skill: SkillBlock, student: NonNullable<StudentLane['student']>, gearLevel = 1): boolean {
+  return getEffects(skill, student, gearLevel).some((ef) => ef.Type === 'Damage')
 }
 
 const BLOCK_HEIGHT = 16
@@ -136,17 +135,16 @@ function msToFrames(ms: number): number {
 }
 
 /** 从 SkillBlock + Student 推导三段式展示参数 */
-function getSkillSegments(skill: SkillBlock, student: NonNullable<StudentLane['student']>): SkillSegments {
+function getSkillSegments(skill: SkillBlock, student: NonNullable<StudentLane['student']>, gearLevel = 1): SkillSegments {
   let animDuration = 60
 
   if (skill.type === 'ex') {
     animDuration = skill.skillDuration ?? student.Skills.E.Duration
   } else if (skill.type === 'ns') {
-    const pub = student.HasGear ? student.Skills.G : student.Skills.P
-    animDuration = pub.Duration || 60
+    animDuration = nsSkillFor(student, gearLevel)?.Duration || 60
   }
 
-  const effects = getEffects(skill, student)
+  const effects = getEffects(skill, student, gearLevel)
 
   // ── 前摇：取最早生效帧 ──
   const applyFrames = effects
@@ -215,14 +213,17 @@ function computeSkillRows(
 export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, highlightedFrame }: TimelineLaneProps) {
   const { t } = useI18n()
   // 订阅主题以触发 studentSkillStyles 重算
-  useThemeStore((s) => s.resolved)
+  const resolved = useThemeStore((s) => s.resolved)
   const { student, studentId, skills, slotIndex } = lane
+  const gearLevel = useSquadStore((s) => s.config.slots[slotIndex]?.gearLevel ?? 1)
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const moveSkillBlock = useTimelineStore((s) => s.moveSkillBlock)
   const removeSkillBlock = useTimelineStore((s) => s.removeSkillBlock)
   const updateSkillBlock = useTimelineStore((s) => s.updateSkillBlock)
   const allLanes = useTimelineStore((s) => s.lanes)
   const squadMode = useSquadStore((s) => s.config.mode)
+  const squadSlots = useSquadStore((s) => s.config.slots)
+  const deckOrder = useSquadStore((s) => s.deckOrder)
   const simulation = useSimulationStore((s) => s.result)
   const costTimeline = useMemo(() => costFramesFromResult(simulation), [simulation])
   const [dragOverFrame, setDragOverFrame] = useState<number | null>(null)
@@ -239,8 +240,8 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
   // 计算技能行（重叠时自动错开，含后效段）
   const skillRows = useMemo(() => {
     if (!student) return []
-    return computeSkillRows(skills, (skill) => getSkillSegments(skill, student))
-  }, [skills, student])
+    return computeSkillRows(skills, (skill) => getSkillSegments(skill, student, gearLevel))
+  }, [skills, student, gearLevel])
 
   // 计算需要的总行数（决定垂直分散范围）
   const totalRows = useMemo(() => {
@@ -267,7 +268,7 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
 
     // 计算技能足迹（仅动画帧，不含后效）
     const getFootprint = (s: SkillBlock) => {
-      const segs = getSkillSegments(s, student!)
+      const segs = getSkillSegments(s, student!, gearLevel)
       return segs.preCast + segs.active
     }
 
@@ -297,10 +298,11 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
           if (l.slotIndex !== slotIndex) return l
           return { ...l, skills: l.skills.filter((_, i) => i !== skillIndex) }
         })
-        const costSimulationRef = computeCostSimulation(lanesWithoutSelf, squadMode)
+        const costSimulationRef = computeCostSimulation(lanesWithoutSelf, squadMode, squadSlots, deckOrder)
         costTimelineRef = costFramesFromResult(costSimulationRef)
         maxCostRef = costSimulationRef.maxCost / COST_SCALE
-        const baseCost = moved.skillCost ?? student!.Skills.E.Cost[0]
+        const exLevel = useSquadStore.getState().config.slots[slotIndex]?.exLevel ?? 5
+        const baseCost = moved.skillCost ?? skillBaseCost(student!, moved.skillRef ?? { kind: 'ex' }, exLevel)
         while (frame <= 5400) {
           while (globalExFrames.has(frame)) frame++
           const requiredCost = effectiveSkillCostAtFrame(
@@ -344,8 +346,9 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
       // 规则2+3：跨轨道 EX 唯一 + COST 充足，合并循环到全部满足
       let candidateCostTimeline = costTimeline
       {
-        const baseCost = dragged.skillCost ?? student!.Skills.E.Cost[0]
-        const costSimulationRef = simulation ?? computeCostSimulation(allLanes, squadMode)
+        const exLevel = useSquadStore.getState().config.slots[slotIndex]?.exLevel ?? 5
+        const baseCost = dragged.skillCost ?? skillBaseCost(student!, dragged.skillRef ?? { kind: 'ex' }, exLevel)
+        const costSimulationRef = simulation ?? computeCostSimulation(allLanes, squadMode, squadSlots, deckOrder)
         if (candidateCostTimeline.length === 0) candidateCostTimeline = costFramesFromResult(costSimulationRef)
         while (finalFrame <= 5400) {
           while (globalExFrames.has(finalFrame)) finalFrame++
@@ -490,12 +493,12 @@ export function TimelineLane({ lane, pxPerFrame, isCollapsed, onToggleCollapse, 
         {student && skills.map((skill, i) => {
           const x = skill.startFrame * pxPerFrame
 
-          const segs = getSkillSegments(skill, student)
+          const segs = getSkillSegments(skill, student, gearLevel)
           const preW = segs.preCast * pxPerFrame
           const activeW = segs.active * pxPerFrame
           const op = TYPE_OPACITY[skill.type]
-          const damage = isDamageSkill(skill, student)
-          const st = studentSkillStyles(slotIndex, op, damage)
+          const damage = isDamageSkill(skill, student, gearLevel)
+          const st = studentSkillStyles(slotIndex, op, damage, resolved === 'dark')
           const row = skillRows[i] ?? 0
           const isEx = skill.type === 'ex'
 

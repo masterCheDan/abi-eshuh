@@ -1,0 +1,628 @@
+{
+  "date": "2026-09-05",
+  "head": "e9af22656c6cf72a890513d977f2b29727bed303",
+  "node": "v24.19.0",
+  "versions": {
+    "vitest": "4.1.10",
+    "typescript": "6.0.3",
+    "eslint": "10.8.0",
+    "vite": "8.1.5"
+  },
+  "files": [
+    {
+      "path": ".gitignore",
+      "status": "M",
+      "sha256": "c904f3af5b9a317057d53f2cc6407e619b1827a0fc4f9c7e42f03a9371a32dc1"
+    },
+    {
+      "path": "README.md",
+      "status": "M",
+      "sha256": "0f333f9068813704b2cae3b84dfda561818f900d59598b0f4aff74bb45d78c9d"
+    },
+    {
+      "path": "data/raids.json",
+      "status": "M",
+      "sha256": "fbe6a2f31450fb52b56ce41fa7c456caefe1db77518b9510311cc2a1386b87e7"
+    },
+    {
+      "path": "data/students.json",
+      "status": "M",
+      "sha256": "d385e3a960168d67af515661bf5cdae1fc7ecb7a9413bf2c830299100edd0c87"
+    },
+    {
+      "path": "package.json",
+      "status": "M",
+      "sha256": "11fe1b042dd7e7322d739667d3638c0cb49a531c1c8ed093ac5b52a89fec6ead"
+    },
+    {
+      "path": "public/data/bosses.min.json",
+      "status": "M",
+      "sha256": "fd90b51d55ba5d7e1e474da4dc93faa5c2871211406fa4c5eca7ed07d0086a1b"
+    },
+    {
+      "path": "public/data/students.min.json",
+      "status": "M",
+      "sha256": "04008fb04866ae7722d9229fb29588fb696c765d569e4a9faf4ca5740af96fa2"
+    },
+    {
+      "path": "public/icons/null.webp",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "scripts/minify_bosses.py",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "scripts/minify_students.py",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/App.tsx",
+      "status": "M",
+      "sha256": "76ea93ca8654e753beca07964654a1e6921ef18d5d4f54ca704ee7afc625b1f8"
+    },
+    {
+      "path": "src/components/skill-panel/ExSkillCard.tsx",
+      "status": "M",
+      "sha256": "ef4fe2a5c0309ab0bf32171698c9af7925e0c61b12c0fc08a1fcd2a63b7409db"
+    },
+    {
+      "path": "src/components/skill-panel/ExtraSkillCard.tsx",
+      "status": "M",
+      "sha256": "cedb1a5d6e73ef5c2d6ba6e4dc4efd165c4e756d9418b55a4de57f5244ce94b6"
+    },
+    {
+      "path": "src/components/skill-panel/StudentSkillCard.tsx",
+      "status": "M",
+      "sha256": "66ddb0f5f7913b67138e0bdd0a0810dbf1311ded58ae6ef973e5bb98e25446d0"
+    },
+    {
+      "path": "src/components/skill-panel/TargetPicker.tsx",
+      "status": "M",
+      "sha256": "f99098b0b28239652a0d7ce27f22b254682b624db255fc648c7f70987e42250a"
+    },
+    {
+      "path": "src/components/squad/CardOrderEditor.tsx",
+      "status": "M",
+      "sha256": "4ba59e5b35d510544d35cb64b1d750f7fc0bc28a89f63fc25e38e78088b6ebd8"
+    },
+    {
+      "path": "src/components/squad/SquadPanel.tsx",
+      "status": "M",
+      "sha256": "27ea48ca4b34f8d5e96b4a6cdf02445faeafbdafe208f8c092e914a5262360f7"
+    },
+    {
+      "path": "src/components/squad/SquadSlot.tsx",
+      "status": "M",
+      "sha256": "d6d5a2072b5d3e416ffd58a77615f8a69483fd660d80495e667caf214c2dfe94"
+    },
+    {
+      "path": "src/components/timeline/AttackTrack.tsx",
+      "status": "M",
+      "sha256": "4d694a8333cea3c3e4a8e8a35ce2a1c79fa944bbebd865813aec17ee77eadfd7"
+    },
+    {
+      "path": "src/components/timeline/BuffTrack.tsx",
+      "status": "M",
+      "sha256": "118d25959308b4a05fac4fa3f6b58c0437c2c7e8ded0a713f513659b2712636a"
+    },
+    {
+      "path": "src/components/timeline/EffectAuditPanel.tsx",
+      "status": "M",
+      "sha256": "1ceab97678a3b8d2b27dbb58ba75776ad2e6cf40c6843e36e4240d2fbe256184"
+    },
+    {
+      "path": "src/components/timeline/ExportDialog.tsx",
+      "status": "M",
+      "sha256": "a92effc534c87588549d189c72f3e8c51d8494a3b04a899577d4b50cd2bb0750"
+    },
+    {
+      "path": "src/components/timeline/ImportDialog.tsx",
+      "status": "M",
+      "sha256": "aa7344cbfe4098b6afbe9a0ee781537317222aadf182381ffac5e39b41c6b329"
+    },
+    {
+      "path": "src/components/timeline/SimulationErrorPanel.tsx",
+      "status": "M",
+      "sha256": "5ab05183140bf183c702a8148fe415d73bfe013665f3e879808c278ba38bf44d"
+    },
+    {
+      "path": "src/components/timeline/SkillEventEditor.tsx",
+      "status": "M",
+      "sha256": "b199e05866c361b105ed38f3bf7c4f3324d53c76adc3b986b12e4e6d15296332"
+    },
+    {
+      "path": "src/components/timeline/Timeline.tsx",
+      "status": "M",
+      "sha256": "19e9223a62b989594a75323de21a39a3cb91e7647c2ecec2577bb43b06dfc174"
+    },
+    {
+      "path": "src/components/timeline/TimelineLane.tsx",
+      "status": "M",
+      "sha256": "fff54cdd58f980a7bf7368173a513b431d1c885cf01532fddc7e6f8346ce28f2"
+    },
+    {
+      "path": "src/components/timeline/buffTrackModel.test.ts",
+      "status": "M",
+      "sha256": "97cb7755655e9b8db5e94552c36783348249219ea601f7d898912e93b7175257"
+    },
+    {
+      "path": "src/components/timeline/buffTrackModel.ts",
+      "status": "M",
+      "sha256": "62a19c26eff40c0181f0b6d56abb82817b249fb3fac883cbc13b5e5fd44f7e1e"
+    },
+    {
+      "path": "src/data/bosses.min.json",
+      "status": "M",
+      "sha256": "fd90b51d55ba5d7e1e474da4dc93faa5c2871211406fa4c5eca7ed07d0086a1b"
+    },
+    {
+      "path": "src/data/students.min.json",
+      "status": "M",
+      "sha256": "04008fb04866ae7722d9229fb29588fb696c765d569e4a9faf4ca5740af96fa2"
+    },
+    {
+      "path": "src/engine/bridge.ts",
+      "status": "M",
+      "sha256": "02c830b32b7987b861039e85ebd099abab3a9d396702697f3191059f8d43717e"
+    },
+    {
+      "path": "src/engine/core/simulationEngine.test.ts",
+      "status": "M",
+      "sha256": "25e9b2464a46b89da78c9930fcc6a1347220f6ce91e90d991c76215f5312881d"
+    },
+    {
+      "path": "src/engine/core/simulationEngine.ts",
+      "status": "M",
+      "sha256": "a8198a335770a8a627e875b76e45d8f31745a0f787cc29920327aef558199522"
+    },
+    {
+      "path": "src/engine/index.ts",
+      "status": "M",
+      "sha256": "e680efee28479eda7d9cfdfd318e188dcb3f1fad881e08077b9ee93c1b0c5266"
+    },
+    {
+      "path": "src/engine/model/fsm.ts",
+      "status": "M",
+      "sha256": "593d6964872e444bbb4959755ddd54d90f2bc1a08402569d67316f0340ef5e46"
+    },
+    {
+      "path": "src/engine/model/types.ts",
+      "status": "M",
+      "sha256": "171ac98b3a1f5d36a8b4a72e230724016aa0bcf6cecdcd930cebd76e1fd19aec"
+    },
+    {
+      "path": "src/engine/system/battleStartRules.test.ts",
+      "status": "M",
+      "sha256": "5a5aedafff0432d6ee703b6331c84dbb2f116e77d9f596a70fe563c600d609a2"
+    },
+    {
+      "path": "src/engine/system/cardOrderSystem.test.ts",
+      "status": "M",
+      "sha256": "b1390de0d8a0179482a5ed8fd1518c29450f043d18d6aaf19b9a80e9c74b259f"
+    },
+    {
+      "path": "src/engine/system/cardOrderSystem.ts",
+      "status": "M",
+      "sha256": "dad3c208971098ee64fe66c93956c1ab126b9809aa78f1c1c85ecf31f0b45d59"
+    },
+    {
+      "path": "src/engine/system/costOverloadRules.test.ts",
+      "status": "M",
+      "sha256": "084b15120b0c2f293ad12169ab46aa41cb6bef9a2736643a0324c95e83cdc3f7"
+    },
+    {
+      "path": "src/engine/system/costOverloadRules.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/engine/system/costSystem.ts",
+      "status": "M",
+      "sha256": "8e4f68b7580ad1fa9ac6959595e35c2d1c22644c1b7a91216c1bf93031b7b562"
+    },
+    {
+      "path": "src/engine/system/exCardRules.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/engine/system/ruleManifest.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/engine/system/skillTargeting.test.ts",
+      "status": "M",
+      "sha256": "085dbca1d9d27f81296183b1deef14c3038de1b32b8211696cc70b555160886a"
+    },
+    {
+      "path": "src/engine/system/skillTargeting.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/engine/system/studentEffectSystem.ts",
+      "status": "M",
+      "sha256": "200b2968ebbe5be948bcc2cf1ed9648c345a5dbbe44f05e94b4252fd1c653ccd"
+    },
+    {
+      "path": "src/engine/system/summonRules.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/engine/system/summonRuntime.test.ts",
+      "status": "M",
+      "sha256": "28cafae532386543c77d9b3953df40a06b10a5ce910ba245b5d0fe1500c6b275"
+    },
+    {
+      "path": "src/engine/system/summonTargets.ts",
+      "status": "M",
+      "sha256": "54629b6b1e1bbfcb531ef43414850cc48d717075004855afc0a8a85bda269ded"
+    },
+    {
+      "path": "src/engine/system/triggerScheduler.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/engine/system/triggerSpecs.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/i18n/en.ts",
+      "status": "M",
+      "sha256": "8078a8f19541dea8122280d247f05dbdef264d015f4f2e5504f2348b364cdffe"
+    },
+    {
+      "path": "src/i18n/ja.ts",
+      "status": "M",
+      "sha256": "7b87160e9d9332196f7217a84430a05bcc0c2a535f4266e43a264a468676df3d"
+    },
+    {
+      "path": "src/i18n/zh.ts",
+      "status": "M",
+      "sha256": "a2a85b4ad832daef1c19d23076dd22b2959b694cd13fd3c4331be2bbce389d5d"
+    },
+    {
+      "path": "src/stores/useSimulationStore.ts",
+      "status": "M",
+      "sha256": "46a77cb31405bd27f03aa8b03c69f7fdcc721c40016580c4272149af5d3916c8"
+    },
+    {
+      "path": "src/stores/useSquadStore.ts",
+      "status": "M",
+      "sha256": "f0874050dc1534d39081aa736e0f5036bfc655fbb472a83e914bb73eeb41fb28"
+    },
+    {
+      "path": "src/stores/useTimelineStore.ts",
+      "status": "M",
+      "sha256": "a5c55fef9bbaa769c79cb2d3b2cbb1bea89c0cd72500bce5c0d81b98f7dc04ed"
+    },
+    {
+      "path": "src/types/squad.ts",
+      "status": "M",
+      "sha256": "bf75537d435f64784058a9e6be5ea059b725b7e036c36a5c3a6fe3d6440f0526"
+    },
+    {
+      "path": "src/types/student.ts",
+      "status": "M",
+      "sha256": "d3b19576be0286c77f302769ac1b18d71cfa9b7f1d7caba4288e9ed9b731461c"
+    },
+    {
+      "path": "src/types/studentStateMachine.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/types/timeline.ts",
+      "status": "M",
+      "sha256": "fb3ed18143681c442bd3c4e7c93937ce601a65dbf46df20a566d3adb0526583e"
+    },
+    {
+      "path": "src/utils/attackCalc.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/utils/battleSimulator.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/utils/costCalc.ts",
+      "status": "M",
+      "sha256": "406239ab85a7a368685bea12975d03b3eda760c5924dcd9bc7c9b7be201cd39b"
+    },
+    {
+      "path": "src/utils/nsTrigger.ts",
+      "status": "D",
+      "sha256": null
+    },
+    {
+      "path": "src/utils/planExport.ts",
+      "status": "M",
+      "sha256": "0a0de8988c70c72c2dd6e06ab92311cb794d5f53c5dd0cf5b83ada4d93adea01"
+    },
+    {
+      "path": "src/utils/shareCode.ts",
+      "status": "M",
+      "sha256": "13f103490c0e342072ebe30e542c4b33fc0963c306fc24bdaa7f60f914e65ba7"
+    },
+    {
+      "path": "src/utils/shareCode/v1.ts",
+      "status": "M",
+      "sha256": "0f841fe25430b9e75ad864978b1eaeb66b3fcaa81f1189d07768dfcabfa12d85"
+    },
+    {
+      "path": "src/utils/shareCode/v2.ts",
+      "status": "M",
+      "sha256": "9530b7618a12c906167ca7ab3a549cbe551ca751ae9651f753310a0c4ae7488b"
+    },
+    {
+      "path": "src/utils/shareCode/v3.ts",
+      "status": "M",
+      "sha256": "c2df43070cc0c53a04a76d83217ed5b5d0bb524e3674f989a0d7c317565537ab"
+    },
+    {
+      "path": "src/utils/shareCode/v4.test.ts",
+      "status": "M",
+      "sha256": "cbacc536b0fbad62a556f83c2102092db62a7506e25056f54fb191ed28eb293f"
+    },
+    {
+      "path": "src/utils/shareCode/v4.ts",
+      "status": "M",
+      "sha256": "4495232c87094a7499ab638fcc56e1314ae734c55b99e146e62b9ae84dcbd8aa"
+    },
+    {
+      "path": "src/utils/studentColors.ts",
+      "status": "M",
+      "sha256": "c1e7255e5a4daa03d803bf17eda5dbc69fd6957ef04150a46d323b9e0f7afaca"
+    },
+    {
+      "path": "public/icons/enemyinfo_ch0344.webp",
+      "status": "??",
+      "sha256": "9bdf357ff2607b72ac9dbb976c5e945d6979e4478d266b547341759fe3157861"
+    },
+    {
+      "path": "public/icons/enemyinfo_ch0345.webp",
+      "status": "??",
+      "sha256": "3417d13b46ef458fd3982ed2ac651ff448c726ea518ad9378da29c90fab0d523"
+    },
+    {
+      "path": "public/icons/enemyinfo_ch0346.webp",
+      "status": "??",
+      "sha256": "d9dc9eaa00aa2873d93c80cb493ecaeaca8589caff67bc52dc136d73acad62d0"
+    },
+    {
+      "path": "public/icons/enemyinfo_ch0347.webp",
+      "status": "??",
+      "sha256": "b02dd2741f4c49c6d6af408c7dbad3a4605ec4a5f24cf3052ad36fa55e46d40b"
+    },
+    {
+      "path": "public/icons/enemyinfo_ch0348.webp",
+      "status": "??",
+      "sha256": "00de2c4e3220d83f6c5cdad81673d33cac519bfb96f9a6d10c66eedfbf08d0d8"
+    },
+    {
+      "path": "public/skills/SKILLICON_CH0344_EXTRAPASSIVESKILL.webp",
+      "status": "??",
+      "sha256": "17446fb33b62ae75fdd4f9b47c1d420ea879c6c5ab30d4ce9270b77665e32358"
+    },
+    {
+      "path": "public/skills/SKILLICON_CH0345_EXTRAPASSIVESKILL.webp",
+      "status": "??",
+      "sha256": "f0432bb528b65f607117995ca6484ad398c5c0d5ff8b7ac4b440755658f409fb"
+    },
+    {
+      "path": "public/skills/SKILLICON_CH0346_EXSKILL.webp",
+      "status": "??",
+      "sha256": "02db0f1f708a8a01acf4ec59d9496073cd4c700368d3f6e8b944fccb50a7b9ef"
+    },
+    {
+      "path": "public/skills/SKILLICON_CH0346_EXTRAPASSIVESKILL.webp",
+      "status": "??",
+      "sha256": "a334066884f506db15f3f870cd7684d10d5c989098bc6b6c51a5721301f2b6a0"
+    },
+    {
+      "path": "public/skills/SKILLICON_CH0347_EXSKILL.webp",
+      "status": "??",
+      "sha256": "e9ebb0ea6d2547af31384993f9684eea0f9e6e66cd70aa166de02a705f5caad9"
+    },
+    {
+      "path": "public/skills/SKILLICON_CH0347_PUBLICSKILL.webp",
+      "status": "??",
+      "sha256": "57f353603765eab8abd1f3b71aa6d431e652e76f2e435248ad1bf7ced9c79773"
+    },
+    {
+      "path": "scripts/gameDataBuilder.ts",
+      "status": "??",
+      "sha256": "4a08ec8cf9f733bf7b1e59a8180317ae3ce25065e8e82371264a90bfbadb1bfb"
+    },
+    {
+      "path": "src/components/skill-panel/SummonTargetPicker.tsx",
+      "status": "??",
+      "sha256": "eb44c69adeda20963ee321dfc87350fc4870502efcd3b095609df301e0ba8af6"
+    },
+    {
+      "path": "src/data/dataPipeline.test.ts",
+      "status": "??",
+      "sha256": "50892c2d6cb706ecd3e765941f42bca08e1db85a4621edd7fe7e60352af7a396"
+    },
+    {
+      "path": "src/domain/SkillViewService.ts",
+      "status": "??",
+      "sha256": "2cd936c55c5c8a0a9eb4b691e2efd7dfd75993ccd0afcfd39180b4327d1ed5c8"
+    },
+    {
+      "path": "src/domain/domain.test.ts",
+      "status": "??",
+      "sha256": "233de6101983d54fffd4f82ba2fcc8c6e310d7dae18804d5f22264a1261a00f8"
+    },
+    {
+      "path": "src/domain/guards.ts",
+      "status": "??",
+      "sha256": "2cc0970a2c0b181371d5b16d2db5e372637cd1e24742c4830ec4385c348c8629"
+    },
+    {
+      "path": "src/domain/rules/GameRules.ts",
+      "status": "??",
+      "sha256": "d57ff65925748116e69a8c194e11bf6078e9639f914410b00c3f9e89f1974e1f"
+    },
+    {
+      "path": "src/domain/rules/cardMechanics.ts",
+      "status": "??",
+      "sha256": "8ce3871b9c428262824b5559fc9721c545547b9acc1b6d3f82bfdcbe7642c133"
+    },
+    {
+      "path": "src/domain/rules/costOverloadRules.ts",
+      "status": "??",
+      "sha256": "b3b576c1c36b20b72ae57e9021bfd7bdb3e9030df1ecdedc57f48f01e6ae69d8"
+    },
+    {
+      "path": "src/domain/rules/exCardRules.ts",
+      "status": "??",
+      "sha256": "74c5111416b5a861ad8f65d7f78d759eb67ed19e0096ca887be9908b0e2809b8"
+    },
+    {
+      "path": "src/domain/rules/layerRules.ts",
+      "status": "??",
+      "sha256": "e1ba4fd54577f1c208c6f8b03c6e86f9cd66ccc3a830ca0e3355f89debae721b"
+    },
+    {
+      "path": "src/domain/rules/nsTriggerRules.test.ts",
+      "status": "??",
+      "sha256": "35dab0989f3e724881908d1ba22381e3c7c94c7ce8da4023dbd4c92d83cfac4d"
+    },
+    {
+      "path": "src/domain/rules/nsTriggerRules.ts",
+      "status": "??",
+      "sha256": "e44ab5feea670ea28276405fc6a5095484900674e6d3c0541ae0914cecf3b38f"
+    },
+    {
+      "path": "src/domain/rules/ruleManifest.ts",
+      "status": "??",
+      "sha256": "e0ebacefe57470bd9ce406d030872ce7301835aef1f518f09472407144e040d8"
+    },
+    {
+      "path": "src/domain/rules/skillTargeting.ts",
+      "status": "??",
+      "sha256": "8f0f58bcc5684feb795da19427dd5663890736ee8a74c944afd55bb48584fdd2"
+    },
+    {
+      "path": "src/domain/rules/summonRules.ts",
+      "status": "??",
+      "sha256": "e0797a8788490f345e77950d47fcd3202bd947fed178f29f398425407fa7bed5"
+    },
+    {
+      "path": "src/domain/rules/triggerSpecs.ts",
+      "status": "??",
+      "sha256": "b8b150ae89d23a25de2878ab887ce186e32516937012880146145544b011f72d"
+    },
+    {
+      "path": "src/domain/rules/valueRowRules.ts",
+      "status": "??",
+      "sha256": "570ec14f7aaeb42f76b030c6a53716f02ecc71b37d6028c8d920cbda8e8c9bc8"
+    },
+    {
+      "path": "src/domain/student.ts",
+      "status": "??",
+      "sha256": "6d8d80f1e3eb5687aa7e1e0232f4712c677d44063f05f18e0bc1a943ca7eb3cb"
+    },
+    {
+      "path": "src/domain/types.ts",
+      "status": "??",
+      "sha256": "c7b14991977dae5d8f3bc3f985daa470557631a29e1625016f461d345fac46cd"
+    },
+    {
+      "path": "src/engine/state/BattleState.ts",
+      "status": "??",
+      "sha256": "0846dec2df36bbbc8afe078b1cc98c97efa95ea3ed9c8848a76b819eacc1c961"
+    },
+    {
+      "path": "src/engine/state/CostSystem.ts",
+      "status": "??",
+      "sha256": "33fa160a6442514c69bac5b3ec09be47f1a81226d54ce82dff401b57339e2a2b"
+    },
+    {
+      "path": "src/engine/system/EffectExecutor.ts",
+      "status": "??",
+      "sha256": "04211f773f9347203f15466dc6b8631d628806f2a66cf508fde87f56157559ef"
+    },
+    {
+      "path": "src/engine/system/EffectScheduler.ts",
+      "status": "??",
+      "sha256": "17c709fcf8b81781c3a3024b7254c7c3d4fd9d02640817f00f18efb5fd068ebb"
+    },
+    {
+      "path": "src/engine/system/SkillResolver.ts",
+      "status": "??",
+      "sha256": "ff5004e451bd526ed092385d300bcc701dade3e09b3a65d114655d0781dc224a"
+    },
+    {
+      "path": "src/engine/system/SkillValidator.ts",
+      "status": "??",
+      "sha256": "cd20a73df8e7eeba0e1621aea6f36aeb9e4271156fd3c7ee61b658c8aeeb6561"
+    },
+    {
+      "path": "src/engine/system/attackSimulation.test.ts",
+      "status": "??",
+      "sha256": "0b9802b3d1fa9af42dd7ba9d10f8b0a507ebfecbd19d3fb10712acc10a1a425a"
+    },
+    {
+      "path": "src/engine/system/attackSimulation.ts",
+      "status": "??",
+      "sha256": "5074420da538d0c861ae753fa58a355055ab2afdf8fb5ebb2550ab636ac08c6c"
+    },
+    {
+      "path": "src/engine/system/bandState.test.ts",
+      "status": "??",
+      "sha256": "d3b1b06df417b69c0aeeed8318908999debf1e5a2c8843beae22f94944d6c48c"
+    },
+    {
+      "path": "src/engine/system/effectRuntime.ts",
+      "status": "??",
+      "sha256": "9154e7b57408f1e6cdf4b8a449fe06866c5c62c3e4f47c39b943d1919096d620"
+    },
+    {
+      "path": "src/engine/system/gearNs.test.ts",
+      "status": "??",
+      "sha256": "33b4ce61d1fe29d3f629707cafb4ff60e88f25b9aa7647b15ca87563e71cc867"
+    },
+    {
+      "path": "src/engine/system/ibukiSwimsuit.test.ts",
+      "status": "??",
+      "sha256": "c81b71da41142df2dfd47cd60a3bf2dce1c216194565c56a275d357ef44f5ae0"
+    },
+    {
+      "path": "src/engine/system/studentEffectSystem.test.ts",
+      "status": "??",
+      "sha256": "d0f68f230fba4e0ca0d88d3569447aa6468ad591880fd7caae17587b5a7555ae"
+    },
+    {
+      "path": "src/engine/system/summonRules.test.ts",
+      "status": "??",
+      "sha256": "78fa30bdeeb096f81f640f91bf124af2689666de1faa681dac1a4c82bf56c9a9"
+    },
+    {
+      "path": "src/stores/squadTimeline.ts",
+      "status": "??",
+      "sha256": "50704b0639ff0a0f9f2cfc822dd0cb3050fc3b58b36133e1d314608d22bf4674"
+    },
+    {
+      "path": "src/utils/costCalc.test.ts",
+      "status": "??",
+      "sha256": "7669c9824ee5aaa400bb1f1befed48896b239b8c654e9446866425935ad5bb57"
+    },
+    {
+      "path": "src/utils/nsSchedule.ts",
+      "status": "??",
+      "sha256": "af56d5a1d1f361f4f69e58a18afde9de8ef37870442947953cd1f8d00293c9f3"
+    }
+  ]
+}

@@ -1,109 +1,60 @@
 import { useMemo } from 'react'
 import type { StudentLane } from '../../types/timeline'
-import { simulateBattle } from '../../utils/battleSimulator'
-import { getStudentHue } from '../../utils/studentColors'
-import { useThemeStore } from '../../stores/useThemeStore'
+import { useSimulationStore } from '../../stores/useSimulationStore'
+import { actionTrackSegments, nsWaitingSegments } from './actionTrackModel'
 
 interface AttackTrackProps {
   lane: StudentLane
   pxPerFrame: number
+  totalFrames: number
 }
 
-const TRACK_HEIGHT = 12
+const COLORS: Record<string, string> = { EX: '#eab308', NS: '#38bdf8', SS: '#c084fc', CC: '#f87171', AA: '#94a3b8', RELOAD: '#fb923c' }
 
-export function AttackTrack({ lane, pxPerFrame }: AttackTrackProps) {
-  const { student } = lane
-  const dark = useThemeStore((s) => s.resolved) === 'dark'
-
-  const segments = useMemo(() => {
-    if (!student || student.SquadType !== 'Main') return []
-    const result = simulateBattle([lane])
-    return result.segments.get(lane.slotIndex) ?? []
-  }, [student, lane])
-
-  if (!student || segments.length === 0) {
-    return <div className="flex border-b border-gray-800/30" style={{ height: TRACK_HEIGHT }} />
-  }
-
-  const hue = getStudentHue(lane.slotIndex)
-
-  const isSkill = (t: string) => t === 'ex' || t === 'ns' || t === 'ss'
+export function AttackTrack({ lane, pxPerFrame, totalFrames }: AttackTrackProps) {
+  const result = useSimulationStore(s => s.result)
+  const computing = useSimulationStore(s => s.computing)
+  // Hide stale output during recomputation: it belongs to previous user facts.
+  const visibleResult = computing ? null : result
+  const segments = useMemo(() => actionTrackSegments(visibleResult, lane.slotIndex, totalFrames)
+    .filter(record => record.studentId === lane.studentId), [visibleResult, lane.slotIndex, lane.studentId, totalFrames])
+  const diagnostics = useMemo(() => visibleResult?.schedulingDiagnostics.filter(d => d.studentId === lane.studentId) ?? [], [visibleResult, lane.studentId])
+  const waits = useMemo(() => nsWaitingSegments(visibleResult, lane.slotIndex, totalFrames)
+    .filter(record => record.studentId === lane.studentId), [visibleResult, lane.slotIndex, lane.studentId, totalFrames])
+  const reasons = [...new Set(diagnostics.map(d => (d.frame == null ? '' : 'F' + d.frame + ' · ') + d.message))]
 
   return (
-    <div className="flex border-b border-gray-800/30" style={{ height: TRACK_HEIGHT }}>
-      <div className="sticky left-0 z-10 shrink-0 w-20 border-r border-gray-800/30" />
-      <div className="relative flex-1">
-        {/* 底层：攻击循环段（细条） */}
-        {segments.map((seg, i) => {
-          const type = seg.type as string
-          if (isSkill(type)) return null
-          const w = (seg.endFrame - seg.startFrame) * pxPerFrame
-          if (w < 0.5) return null
-          const dk = dark ? 0 : 12 // 亮色主题压暗亮度防洗白
-          const colors: Record<string, { bg: string; border: string; cls?: string }> = {
-            prepare: { bg: `hsla(${hue}, 30%, ${50 - dk}%, 0.12)`, border: `hsla(${hue}, 30%, ${50 - dk}%, 0.2)` },
-            reload: { bg: `hsla(${hue}, 20%, ${40 - dk}%, 0.15)`, border: `hsla(${hue}, 20%, ${40 - dk}%, 0.25)` },
-            interrupted: { bg: 'hsla(0, 0%, 40%, 0.18)', border: 'hsla(0, 0%, 40%, 0.3)', cls: 'opacity-60' },
-            attack: { bg: `hsla(${hue}, 40%, ${55 - dk}%, 0.18)`, border: `hsla(${hue}, 40%, ${55 - dk}%, 0.3)` },
-            phase_transition: { bg: `hsla(10, 70%, ${45 - dk}%, 0.2)`, border: `hsla(10, 70%, ${45 - dk}%, 0.35)` },
-          }
-          const c = (colors as Record<string, { bg: string; border: string; cls?: string }>)[type] || colors.attack
-          const titles: Record<string, string> = {
-            prepare: '准备', reload: '换弹', interrupted: 'EX打断',
-            phase_transition: '阶段转换', attack: `射击 #${seg.index + 1}`,
-          }
-          return (
-            <div
-              key={i}
-              className={`absolute border-l ${c.cls ?? ''}`}
-              style={{
-                left: seg.startFrame * pxPerFrame,
-                top: 5,
-                width: w,
-                height: 3,
-                backgroundColor: c.bg,
-                borderLeftColor: c.border,
-                borderRadius: '0 1px 1px 0',
-              }}
-              title={titles[type] || type}
-            />
-          )
-        })}
-        {/* 上层：技能段（高亮色块 + 标签） */}
-        {segments.map((seg, i) => {
-          const type = seg.type as string
-          if (!isSkill(type)) return null
-          const w = (seg.endFrame - seg.startFrame) * pxPerFrame
-          if (w < 2) return null
-          const skillColors: Record<string, { bg: string; border: string; label: string }> = {
-            ex: { bg: 'hsla(45, 80%, 55%, 0.35)', border: 'hsla(45, 80%, 55%, 0.6)', label: 'EX' },
-            ns: { bg: 'hsla(200, 60%, 55%, 0.30)', border: 'hsla(200, 60%, 55%, 0.55)', label: 'NS' },
-            ss: { bg: 'hsla(280, 55%, 55%, 0.30)', border: 'hsla(280, 55%, 55%, 0.55)', label: 'SS' },
-          }
-          const c = skillColors[type] || skillColors.ns
-          return (
-            <div
-              key={`skill-${i}`}
-              className="absolute flex items-center border-l overflow-hidden"
-              style={{
-                left: seg.startFrame * pxPerFrame,
-                top: 1,
-                width: Math.max(w, 14),
-                height: TRACK_HEIGHT - 2,
-                backgroundColor: c.bg,
-                borderLeftColor: c.border,
-                borderRadius: '2px',
-              }}
-              title={`${c.label} 技能`}
-            >
-              <span
-                className="text-[8px] font-bold tracking-wide leading-none ml-0.5"
-                style={{ color: c.border }}
-              >
-                {c.label}
-              </span>
+    <div className="flex border-b border-gray-800/30" style={{ height: 20 }}>
+      <div className="sticky left-0 z-10 shrink-0 w-20 border-r border-gray-800/30" style={{ background: 'var(--bg-panel)' }}>
+        {lane.student && (
+          <details className="relative text-[9px]" style={{ color: 'var(--text-muted)' }}>
+            <summary className="cursor-pointer px-1 py-0.5 whitespace-nowrap" title="查看动作记录与调度限制">
+              {computing ? '计算中' : !result ? '待推演' : lane.student.SquadType === 'Main' ? '普攻未启用' : '实际动作'}
+            </summary>
+            <div className="absolute left-0 top-full z-30 w-80 max-h-48 overflow-y-auto rounded border p-2 shadow-lg" style={{ background: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
+              <p>实心条显示引擎已接受的动作，底部虚线表示 NS 等待。上方技能块是用户尝试，失败不会生成这里的执行条。</p>
+              {lane.student.SquadType === 'Main' && <p className="mt-1">普攻扣弹、完成与恢复规则尚未认证，暂不绘制推测普攻。攻击次数 NS 预排仍仅是待确认建议。</p>}
+              {reasons.map(reason => <p className="mt-1" key={reason}>{reason}</p>)}
             </div>
-          )
+          </details>
+        )}
+      </div>
+      <div className="relative flex-1">
+        {waits.map(wait => <div key={wait.id} tabIndex={0} className="absolute border-b border-dashed border-sky-400"
+          style={{ left: wait.startFrame * pxPerFrame, top: 16, height: 3, width: Math.max(3, (wait.endFrame - wait.startFrame) * pxPerFrame) }}
+          title={`NS 到期 F${wait.triggerFrame} · ${wait.reason === 'control' ? '受控等待' : '动作等待'} F${wait.startFrame}—F${wait.endFrame} · ${wait.castFrame == null ? '尚未释放' : `实际释放 F${wait.castFrame}`}`} />)}
+        {segments.map(record => {
+          const color = COLORS[record.actionType] ?? '#94a3b8'
+          const width = (record.endFrame - record.startFrame) * pxPerFrame
+          const status = record.status === 'interrupted' ? '中断于 F' + record.interruptedAt : record.status === 'completed' ? '已完成' : '模拟结束时仍在执行'
+          return <div key={record.recordId} tabIndex={0}
+            className="absolute flex items-center border-l overflow-hidden text-[8px]"
+            style={{ left: record.startFrame * pxPerFrame, top: 3, width: Math.max(width, 3), height: 13,
+              color, borderColor: color, background: 'color-mix(in srgb, ' + color + ' 22%, transparent)',
+              borderRight: record.wasInterrupted ? '2px dashed ' + color : undefined }}
+            title={record.actionType + ' · F' + record.startFrame + '—F' + record.endFrame + ' · ' + status + (record.triggerFrame == null ? '' : ' · 自动触发到期 F' + record.triggerFrame) + (record.effectFrame == null ? ' · 尚无已生效效果' : ' · 首次生效 F' + record.effectFrame)}>
+            {width >= 14 && <span className="ml-0.5">{record.actionType}</span>}
+          </div>
         })}
       </div>
     </div>

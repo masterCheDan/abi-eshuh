@@ -12,8 +12,10 @@ import {
   COST_SCALE,
 } from '../../utils/costCalc'
 import { TargetPicker, type TargetOption } from './TargetPicker'
-import { fixedSkillTargetIds, skillTargetPolicy } from '../../engine/system/skillTargeting'
-import { applyCostOverloadRule, COST_OVERLOAD_RULES } from '../../engine/system/costOverloadRules'
+import { SummonTargetPicker } from './SummonTargetPicker'
+import { rules, type SkillTargetPolicy } from '../../domain/rules/GameRules'
+import { getExSkillView } from '../../domain/SkillViewService'
+import { activeSummonsAtFrame } from '../../engine'
 
 interface ExSkillCardProps { student: Student }
 
@@ -24,13 +26,14 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const [vFrame, setFrame] = useState('0')
   const [vMs, setMs] = useState('0')
   const [targetIds, setTargetIds] = useState<number[]>([])
+  const [targetSummonIds, setTargetSummonIds] = useState<string[]>([])
   const addSkillBlock = useTimelineStore((s) => s.addSkillBlock)
   const slots = useSquadStore((s) => s.config.slots)
 
   const slot = useMemo(() => slots.find((s) => s.student?.Id === student.Id), [slots, student.Id])
   const slotIndex = slot?.index ?? -1
+  const gearLevel = slot?.gearLevel ?? 1
 
-  const squadStudents = useMemo(() => slots.filter((s) => s.student).map((s) => s.student!), [slots])
   const allLanes = useTimelineStore((s) => s.lanes)
   const simulation = useSimulationStore((s) => s.result)
   const ex = student.Skills.E
@@ -38,24 +41,21 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   // ── EX 等级 ──
   const exLevel = slot?.exLevel ?? 5
 
-  const targetPolicy = useMemo(
-    () => skillTargetPolicy(applyCostOverloadRule(student.Id, { kind: 'ex' }, ex.Effects)),
-    [ex.Effects, student.Id],
+  const skillView = useMemo(
+    () => getExSkillView(student, slots, { kind: 'ex' }, exLevel, t.event_log.target_boss),
+    [student, slots, exLevel, t.event_log.target_boss],
   )
-  const isManualTarget = targetPolicy === 'select-ally' || targetPolicy === 'select-any'
+  const targetPolicy = (skillView?.targeting.policy ?? 'self') as SkillTargetPolicy
+  const isManualTarget = skillView?.isManualTarget ?? false
 
   // targetId: null=未选择, -1=Boss, other=学生ID
-  const selected = !isManualTarget || targetIds.length > 0
+  const selected = !isManualTarget || (skillView?.targeting.min != null
+    ? targetIds.length >= skillView.targeting.min && targetIds.length <= (skillView.targeting.max ?? Number.POSITIVE_INFINITY)
+    : targetIds.length + targetSummonIds.length > 0)
   const effectiveTargetIds = (): number[] => {
-    return isManualTarget ? targetIds : fixedSkillTargetIds(targetPolicy, student.Id)
+    return isManualTarget ? targetIds : rules.targeting.fixedTargetIds(targetPolicy as Exclude<SkillTargetPolicy, 'select-ally' | 'select-any'>, student.Id)
   }
-  const targetOptions = useMemo<TargetOption[]>(() => {
-    const candidates = COST_OVERLOAD_RULES[student.Id]
-      ? squadStudents.filter(value => value.SquadType === 'Main')
-      : squadStudents
-    const allies = candidates.map(value => ({ id: value.Id, label: value.Name }))
-    return targetPolicy === 'select-any' ? [{ id: -1, label: t.event_log.target_boss }, ...allies] : allies
-  }, [squadStudents, student.Id, t.event_log.target_boss, targetPolicy])
+  const targetOptions = useMemo<TargetOption<number>[]>(() => skillView?.availableTargets ?? [], [skillView])
 
   /* ── 工具：仅允许数字输入 ── */
   const digits = (v: string) => v.replace(/\D/g, '')
@@ -79,6 +79,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
   const frame = Math.min(29, parseInt(vFrame) || 0)
   const msVal = Math.min(999, parseInt(vMs) || 0)
   const totalFrames = min * 1800 + sec * 30 + frame
+  const activeSummons = useMemo(() => activeSummonsAtFrame(simulation?.effectAudit, totalFrames), [simulation?.effectAudit, totalFrames])
 
   // ── Cost 充足性检测 ──
   const baseSkillCost = ex.Cost[exLevel - 1]
@@ -102,7 +103,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
       const st = allLanes.find(l => l.slotIndex === slotIndex)?.student
       if (st) {
         if (s.type === 'ex') dur = st.Skills.E.Duration
-        else if (s.type === 'ns') { const p = st.HasGear ? st.Skills.G : st.Skills.P; dur = p.Duration || 60 }
+        else if (s.type === 'ns') { const p = gearLevel > 0 && st.Skills.G ? st.Skills.G : st.Skills.P; dur = p?.Duration || 60 }
       }
       if (totalFrames < s.startFrame + dur && totalFrames + footprint > s.startFrame) return false
     }
@@ -116,7 +117,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     if (exSet.has(totalFrames)) return false
 
     return true
-  }, [totalFrames, ex.Duration, slotIndex, allLanes])
+  }, [totalFrames, ex.Duration, slotIndex, allLanes, gearLevel])
 
   const canAct = selected && isTimeValid && hasEnoughCost
 
@@ -124,7 +125,7 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
     if (!canAct) return
     addSkillBlock(slotIndex, {
       type: 'ex', name: ex.Name, startFrame: totalFrames,
-      studentId: student.Id, targetId: effectiveTargetIds()[0] ?? student.Id, targetIds: effectiveTargetIds(),
+      studentId: student.Id, targetId: effectiveTargetIds()[0] ?? student.Id, targetIds: effectiveTargetIds(), targetSummonIds,
       skillRef: { kind: 'ex' }, triggerSource: 'manual',
       skillCost: baseSkillCost, skillDuration: ex.Duration,
     })
@@ -199,12 +200,17 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
       </div>
 
       {/* 目标选择器 */}
-      {isManualTarget ? <TargetPicker options={targetOptions} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} multiple={!COST_OVERLOAD_RULES[student.Id]} /> : (
+      {isManualTarget ? <div className="space-y-2"><TargetPicker options={targetOptions} selectedIds={targetIds} onChange={setTargetIds} label={t.skill.target} multiple={skillView?.targeting.max !== 1} /><SummonTargetPicker summons={activeSummons} selectedIds={targetSummonIds} onChange={setTargetSummonIds} /></div> : (
         <div className="flex items-center gap-2 text-xs">
           <span style={{ color: 'var(--text-muted)' }}>{t.skill.target}</span>
           <span className="font-game text-[11px] px-1.5 py-0.5 rounded" style={{ color: targetPolicy === 'boss' ? '#fff' : 'var(--ok)', background: targetPolicy === 'boss' ? 'var(--danger)' : 'color-mix(in srgb, var(--ok) 10%, transparent)' }}>
             {targetPolicy === 'self' ? t.skill.target_self : targetPolicy === 'boss' ? t.event_log.target_boss : targetPolicy === 'mixed' ? `${t.skill.target_self} / ${t.event_log.target_boss}` : '固定编队范围'}
           </span>
+        </div>
+      )}
+      {skillView?.hint && (
+        <div className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+          {skillView.hint}
         </div>
       )}
 
@@ -230,8 +236,8 @@ export function ExSkillCard({ student }: ExSkillCardProps) {
           onDragStart={selected ? (e) => {
             e.dataTransfer.setData('application/x-skill-block', JSON.stringify({
               type: 'ex', name: ex.Name, startFrame: 0,
-              studentId: student.Id, targetId: effectiveTargetIds()[0] ?? student.Id, targetIds: effectiveTargetIds(),
-              skillRef: { kind: 'ex' }, triggerSource: 'manual',
+              studentId: student.Id, targetId: effectiveTargetIds()[0] ?? student.Id, targetIds: effectiveTargetIds(), targetSummonIds,
+              skillRef: { kind: 'ex' }, triggerSource: 'manual', skillCost: baseSkillCost,
             }))
             e.dataTransfer.effectAllowed = 'copyMove'
           } : undefined}

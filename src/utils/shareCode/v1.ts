@@ -12,7 +12,7 @@ import type { StudentLane } from '../../types/timeline'
 import type {
   ShareCodePayload,
   CalibrationEntry,
-} from '../../engine/model/types'
+} from '../../engine'
 
 export const VERSION = '1.0.0'
 

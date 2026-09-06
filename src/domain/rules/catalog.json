@@ -1,0 +1,2623 @@
+{
+  "version": 1,
+  "nsScheduling": {
+    "version": 1,
+    "policies": {
+      "cast_reset": {
+        "id": "scheduler.cast-reset.v1",
+        "handler": "scheduler.interval",
+        "status": "partial",
+        "strategy": "满足条件且状态允许时立即施放；周期从实际开始施放时点重置，等待期间只保留一个触发",
+        "limitations": "计时约定由用户于 2026-09-06 确认；不认证真实攻击、移动和换弹延迟；未核实中断使该学生停止后续自动调度",
+        "clock": "cast_start",
+        "busy": "wait_idle",
+        "controlled": "wait_clear",
+        "overdue": "coalesce",
+        "failure": "reject_cycle"
+      }
+    },
+    "skills": {
+      "10012": {
+        "P": { "stats": ["AttackPower_Coefficient"], "scope": "固定自身增益；效果按现有属性状态执行，不推导普攻伤害" },
+        "G": { "stats": ["AttackPower_Coefficient", "DefensePower_Coefficient"], "scope": "固定自身双属性增益；效果按现有属性状态执行，不推导普攻伤害" }
+      },
+      "10028": {
+        "P": { "stats": ["AttackPower_Coefficient"], "scope": "基础 NS 固定自身攻击增益；爱用品 NS 的 Cost 回复尚缺实现，不能继承此资格" }
+      }
+    },
+    "manualOnly": {
+      "10000": { "P": "概率分支没有完整结构化触发事实", "G": "概率分支没有完整结构化触发事实" },
+      "10015": { "P": "能量充能状态尚未随 NS 完整执行", "G": "能量充能状态尚未随 NS 完整执行" },
+      "10028": { "G": "强化 NS 缺少直接 Cost 回复效果" },
+      "20000": { "P": "目标选择依赖敌方真实血量", "G": "目标与倍率依赖敌方真实血量" }
+    }
+  },
+  "actions": {
+    "version": 1,
+    "pendingInterruption": {
+      "id": "action.pending-interruption-v1",
+      "handler": "action.pendingInterruption",
+      "status": "partial",
+      "strategy": "按施放实例定位待生效效果；人工事实保留旧行为并诊断，自动 NS 中断后的待生效效果要求人工确认",
+      "limitations": "当前没有经核实的逐学生取消规则；自动来源不得推断中断后的效果，人工事件保留不代表游戏中一定继续",
+      "resolution": "preserve_unverified"
+    },
+    "policy": {
+      "id": "action.data-v1",
+      "handler": "action.inspect",
+      "status": "state_only",
+      "strategy": "保留并检查普攻及 FormChange 原始数据，输出逐学生动作依赖缺口；未知字段失败",
+      "limitations": "仅为普攻数据和资格预检，不执行普攻，不认证队伍级自动资格；技能与控制动作已接入，普攻循环尚待核实"
+    },
+    "contract": {
+      "ammoAmount": "AmmoCost",
+      "attackCount": "one_per_completed_action",
+      "hits": "damage_weights_not_attack_count",
+      "appliedEffectsOnInterrupt": "preserve",
+      "failedCast": "no_action_mutation"
+    },
+    "checkpoints": {
+      "ammoDebit": "待核实扣弹时点及点射中断后的实际消耗，禁止以 Hits 数量代替 AmmoCost",
+      "attackComplete": "仅已确认完成的动作计一次普攻；现有分段时长未认证到完成帧的映射",
+      "reloadRefill": "待核实补弹时点及换弹中断行为，禁止换弹开始即补满",
+      "interruptResume": "待核实 EX、NS、控制中断后的准备、攻击与换弹恢复方式",
+      "pendingEffectsOnInterrupt": "已生效效果保留；尚未生效效果缺少逐技能取消或保留规则",
+      "frameComposition": "待核实准备、前摇、攻击、后摇及间隔的组合与攻速作用范围"
+    },
+    "normalFields": ["Effects", "Frames", "Radius", "FormChange", "FixedFrameRate"],
+    "requiredFrames": ["AttackEnterDuration", "AttackStartDuration", "AttackEndDuration", "AttackBurstRoundOverDelay", "AttackIngDuration", "AttackReloadDuration"],
+    "optionalFrames": ["AttackReadyStartDuration", "AttackReadyEndDuration"],
+    "effectFields": ["Type", "Hits", "Scale", "Block", "Condition", "CriticalCheck", "IgnoreDef", "OverrideSkillDamageType", "StatModifier", "AdditionalDamage", "ExcludeDesc"],
+    "statModifierFields": ["Stat", "Source", "MinStatValue", "MaxStatValue", "MultiplierMin", "MultiplierMax"],
+    "statModifierStats": ["AttackSpeed", "EnhanceExDamageRate"],
+    "statModifierSources": ["Caster"],
+    "overrideDamageTypes": ["Ex"],
+    "radiusTypes": ["Fan", "Circle", "Obb"],
+    "dependencies": {
+      "stats": {
+        "AttackSpeed_Base": "攻速基础值修改尚未映射到动作阶段",
+        "AttackSpeed_Coefficient": "攻速倍率修改尚未映射到动作阶段",
+        "AmmoCount_Base": "弹匣修改的生效时点、当前弹药及上限关系待核实",
+        "IgnoreDelayCount_Base": "无视攻击间隔的次数消费和作用阶段待核实",
+        "MoveSpeed_Coefficient": "站位移动不在当前动作模拟范围",
+        "Range_Base": "射程改变与目标可达性没有位置事实",
+        "Range_Coefficient": "射程改变与目标可达性没有位置事实"
+      },
+      "specials": {
+        "FormChange": "变身的普攻分支、弹药和恢复状态未绑定",
+        "NormalAttackOverride_MaidAris": "女仆爱丽丝普攻替换缺少完整动作数据与切换规则",
+        "NormalAttackAreaOverride_Shigure": "时雨普攻范围替换尚未接入动作执行",
+        "NormalAttackAreaOverride_CasualSena": "便服濑名普攻范围替换尚未接入动作执行"
+      }
+    }
+  },
+  "policies": {
+    "effects": {
+      "Buff": {
+        "id": "effect.Buff",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 Buff",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Damage": {
+        "id": "effect.Damage",
+        "handler": "effect.ledger",
+        "status": "partial",
+        "strategy": "使用 ledger 路径处理 Damage",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Heal": {
+        "id": "effect.Heal",
+        "handler": "effect.ledger",
+        "status": "partial",
+        "strategy": "使用 ledger 路径处理 Heal",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "CrowdControl": {
+        "id": "effect.CrowdControl",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 CrowdControl",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "DamageDebuff": {
+        "id": "effect.DamageDebuff",
+        "handler": "effect.ledger",
+        "status": "partial",
+        "strategy": "使用 ledger 路径处理 DamageDebuff",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Regen": {
+        "id": "effect.Regen",
+        "handler": "effect.ledger",
+        "status": "partial",
+        "strategy": "使用 ledger 路径处理 Regen",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Summon": {
+        "id": "effect.Summon",
+        "handler": "effect.summon",
+        "status": "partial",
+        "strategy": "使用 summon 路径处理 Summon",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Special": {
+        "id": "effect.Special",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 Special",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Shield": {
+        "id": "effect.Shield",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 Shield",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "CostChange": {
+        "id": "effect.CostChange",
+        "handler": "effect.active",
+        "status": "implemented",
+        "strategy": "按目标维护 EX 费用修正并在成功施放后消费次数"
+      },
+      "Dispel": {
+        "id": "effect.Dispel",
+        "handler": "effect.dispel",
+        "status": "partial",
+        "strategy": "使用 dispel 路径处理 Dispel",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Knockback": {
+        "id": "effect.Knockback",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 Knockback",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "ConcentratedTarget": {
+        "id": "effect.ConcentratedTarget",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 ConcentratedTarget",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      },
+      "Accumulation": {
+        "id": "effect.Accumulation",
+        "handler": "effect.active",
+        "status": "partial",
+        "strategy": "使用 active 路径处理 Accumulation",
+        "limitations": "仅覆盖当前调度、状态或审计行为；不包含真实血量结算，完整生命周期与逐技能例外需后续验收"
+      }
+    },
+    "conditions": {
+      "BuffCount": {
+        "id": "condition.BuffCount",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用现有 BuffCount 条件验证路径",
+        "limitations": "保持当前验证语义；外部属性缺失、活动层数与特殊状态完整性需后续校验"
+      },
+      "Special": {
+        "id": "condition.Special",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用现有 Special 条件验证路径",
+        "limitations": "保持当前验证语义；外部属性缺失、活动层数与特殊状态完整性需后续校验"
+      },
+      "TargetProp": {
+        "id": "condition.TargetProp",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用现有 TargetProp 条件验证路径",
+        "limitations": "保持当前验证语义；外部属性缺失、活动层数与特殊状态完整性需后续校验"
+      },
+      "SkillLevel": {
+        "id": "condition.SkillLevel",
+        "handler": "condition.validate",
+        "status": "implemented",
+        "strategy": "使用现有 SkillLevel 条件验证路径"
+      }
+    },
+    "targets": {
+      "Self": {
+        "id": "target.Self",
+        "handler": "target.resolve",
+        "status": "implemented",
+        "strategy": "按现有选择器解析 Self；Enemy 仅为占位目标"
+      },
+      "Enemy": {
+        "id": "target.Enemy",
+        "handler": "target.resolve",
+        "status": "implemented",
+        "strategy": "按现有选择器解析 Enemy；Enemy 仅为占位目标"
+      },
+      "Ally": {
+        "id": "target.Ally",
+        "handler": "target.resolve",
+        "status": "implemented",
+        "strategy": "按现有选择器解析 Ally；Enemy 仅为占位目标"
+      },
+      "AllyMain": {
+        "id": "target.AllyMain",
+        "handler": "target.resolve",
+        "status": "implemented",
+        "strategy": "按现有选择器解析 AllyMain；Enemy 仅为占位目标"
+      },
+      "AllySupport": {
+        "id": "target.AllySupport",
+        "handler": "target.resolve",
+        "status": "implemented",
+        "strategy": "按现有选择器解析 AllySupport；Enemy 仅为占位目标"
+      },
+      "Any": {
+        "id": "target.Any",
+        "handler": "target.resolve",
+        "status": "implemented",
+        "strategy": "按现有选择器解析 Any；Enemy 仅为占位目标"
+      }
+    },
+    "stats": {
+      "AccuracyPoint_Base": {
+        "id": "stat.AccuracyPoint_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "AccuracyPoint_Coefficient": {
+        "id": "stat.AccuracyPoint_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "AmmoCount_Base": {
+        "id": "stat.AmmoCount_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "AttackPower_Base": {
+        "id": "stat.AttackPower_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "AttackPower_Coefficient": {
+        "id": "stat.AttackPower_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "AttackSpeed_Base": {
+        "id": "stat.AttackSpeed_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "AttackSpeed_Coefficient": {
+        "id": "stat.AttackSpeed_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "BlockRate_Base": {
+        "id": "stat.BlockRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "ChillDamagedIncrease_Coefficient": {
+        "id": "stat.ChillDamagedIncrease_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalChanceResistPoint_Coefficient": {
+        "id": "stat.CriticalChanceResistPoint_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalDamageRate_Base": {
+        "id": "stat.CriticalDamageRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalDamageRate_Coefficient": {
+        "id": "stat.CriticalDamageRate_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalDamageResistRate_Base": {
+        "id": "stat.CriticalDamageResistRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalDamageResistRate_Coefficient": {
+        "id": "stat.CriticalDamageResistRate_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalPoint_Base": {
+        "id": "stat.CriticalPoint_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalPoint_BaseOuter": {
+        "id": "stat.CriticalPoint_BaseOuter",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "CriticalPoint_Coefficient": {
+        "id": "stat.CriticalPoint_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DamageRatio2_Coefficient": {
+        "id": "stat.DamageRatio2_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DamagedRatio2_Coefficient": {
+        "id": "stat.DamagedRatio2_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DefensePenetration_Base": {
+        "id": "stat.DefensePenetration_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DefensePower_Base": {
+        "id": "stat.DefensePower_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DefensePower_Coefficient": {
+        "id": "stat.DefensePower_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DodgePoint_Base": {
+        "id": "stat.DodgePoint_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "DodgePoint_Coefficient": {
+        "id": "stat.DodgePoint_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "EnhanceBasicsDamageRate_Base": {
+        "id": "stat.EnhanceBasicsDamageRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "EnhanceExDamageRate_Base": {
+        "id": "stat.EnhanceExDamageRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "EnhanceExplosionRate_Base": {
+        "id": "stat.EnhanceExplosionRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "EnhanceMysticRate_Base": {
+        "id": "stat.EnhanceMysticRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "EnhancePierceRate_Base": {
+        "id": "stat.EnhancePierceRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "EnhanceSonicRate_Base": {
+        "id": "stat.EnhanceSonicRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "ExtendBuffDuration_Base": {
+        "id": "stat.ExtendBuffDuration_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "ExtendDebuffDuration_Base": {
+        "id": "stat.ExtendDebuffDuration_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "ExtendDebuffDuration_Coefficient": {
+        "id": "stat.ExtendDebuffDuration_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "HealEffectivenessRate_Base": {
+        "id": "stat.HealEffectivenessRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "HealEffectivenessRate_Coefficient": {
+        "id": "stat.HealEffectivenessRate_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "HealPower_Base": {
+        "id": "stat.HealPower_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "HealPower_Coefficient": {
+        "id": "stat.HealPower_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "IgnoreDelayCount_Base": {
+        "id": "stat.IgnoreDelayCount_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "MaxHP_Base": {
+        "id": "stat.MaxHP_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "MaxHP_Coefficient": {
+        "id": "stat.MaxHP_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "MoveSpeed_Coefficient": {
+        "id": "stat.MoveSpeed_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "OppressionPower_Base": {
+        "id": "stat.OppressionPower_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "OppressionPower_Coefficient": {
+        "id": "stat.OppressionPower_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "OppressionResist_Coefficient": {
+        "id": "stat.OppressionResist_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "Range_Base": {
+        "id": "stat.Range_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "Range_Coefficient": {
+        "id": "stat.Range_Coefficient",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "ReduceWeakDamagedRate_Base": {
+        "id": "stat.ReduceWeakDamagedRate_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      },
+      "RegenCost_Base": {
+        "id": "stat.RegenCost_Base",
+        "handler": "stat.costRegen",
+        "status": "implemented",
+        "strategy": "参与 Cost 回复计算"
+      },
+      "RegenCost_Coefficient": {
+        "id": "stat.RegenCost_Coefficient",
+        "handler": "stat.costRegen",
+        "status": "implemented",
+        "strategy": "参与 Cost 回复计算"
+      },
+      "StabilityPoint_Base": {
+        "id": "stat.StabilityPoint_Base",
+        "handler": "stat.active",
+        "status": "state_only",
+        "strategy": "保存为活动属性修正器",
+        "limitations": "不承诺将属性修正反馈到真实伤害、动作或血量计算"
+      }
+    },
+    "specials": {
+      "FormChange": {
+        "id": "special.FormChange",
+        "handler": "special.state",
+        "status": "partial",
+        "strategy": "维护状态并提供登记的形态解锁/时长参数",
+        "limitations": "不代表该技能所有后续战斗影响已经实现",
+        "unlocksExtraEx": true
+      },
+      "Fury": {
+        "id": "special.Fury",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "SilverBullet": {
+        "id": "special.SilverBullet",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "CH0187Mod": {
+        "id": "special.CH0187Mod",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "CH0224_Public": {
+        "id": "special.CH0224_Public",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "CH0239_ExtraPassive": {
+        "id": "special.CH0239_ExtraPassive",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "CH0280_Ex_01": {
+        "id": "special.CH0280_Ex_01",
+        "handler": "special.state",
+        "status": "partial",
+        "strategy": "维护状态并提供登记的形态解锁/时长参数",
+        "limitations": "不代表该技能所有后续战斗影响已经实现",
+        "unlocksExtraEx": true,
+        "durationMs": 70000
+      },
+      "CH0309_Ex": {
+        "id": "special.CH0309_Ex",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "AmplifyDoTReducePeriod_Chill": {
+        "id": "special.AmplifyDoTReducePeriod_Chill",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "AmplifyDoTAdditionalTick_Poison": {
+        "id": "special.AmplifyDoTAdditionalTick_Poison",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "EnergyBatteryHalf": {
+        "id": "special.EnergyBatteryHalf",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "NormalAttackAreaOverride_Shigure": {
+        "id": "special.NormalAttackAreaOverride_Shigure",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "NormalAttackOverride_MaidAris": {
+        "id": "special.NormalAttackOverride_MaidAris",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "NormalAttackAreaOverride_CasualSena": {
+        "id": "special.NormalAttackAreaOverride_CasualSena",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "IgnoreDefense": {
+        "id": "special.IgnoreDefense",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "GuaranteedCritical": {
+        "id": "special.GuaranteedCritical",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "AllDamageCountsAsEx": {
+        "id": "special.AllDamageCountsAsEx",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "NormalDamageScalesWithExBuff": {
+        "id": "special.NormalDamageScalesWithExBuff",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "CostOverload": {
+        "id": "special.CostOverload",
+        "handler": "special.costDebt",
+        "status": "partial",
+        "strategy": "维护 EX 借费额度、负 Cost 余额及还款审计",
+        "limitations": "沿用现有满编约束与借费实现；不代表全部触发、驱散及外部战况语义均已验收"
+      },
+      "(none)": {
+        "id": "special.(none)",
+        "handler": "special.state",
+        "status": "state_only",
+        "strategy": "保存特殊状态及审计",
+        "limitations": "不代表该技能所有后续战斗影响已经实现"
+      },
+      "CH0220_Public": {
+        "id": "special.CH0220_Public",
+        "handler": "special.layers",
+        "status": "partial",
+        "strategy": "使用共享乐队层数配置维护计数、衰减、累计授予及倍率",
+        "limitations": "衰减/累计授予审计、封顶溢出贡献及活动效果移除后的计数一致性仍待完整生命周期验收"
+      },
+      "CH0221_ExtraPassive": {
+        "id": "special.CH0221_ExtraPassive",
+        "handler": "special.layers",
+        "status": "partial",
+        "strategy": "使用共享乐队层数配置维护计数、衰减、累计授予及倍率",
+        "limitations": "衰减/累计授予审计、封顶溢出贡献及活动效果移除后的计数一致性仍待完整生命周期验收"
+      }
+    },
+    "costValueTypes": {
+      "BaseAmount": {
+        "id": "cost.BaseAmount",
+        "handler": "cost.modify",
+        "status": "implemented",
+        "strategy": "直接修改 EX 费用"
+      },
+      "Coefficient": {
+        "id": "cost.Coefficient",
+        "handler": "cost.modify",
+        "status": "implemented",
+        "strategy": "按万分比计算减费量并向零截断"
+      }
+    },
+    "conditionParameters": {
+      "Special:SilverBullet": {
+        "id": "parameter.Special:SilverBullet",
+        "handler": "action.inspect",
+        "status": "state_only",
+        "strategy": "保留樱子普攻按 SilverBullet 状态分支的结构化条件",
+        "limitations": "不执行普攻分支选择或由伤害段数推导攻击计数；等待动作与状态消费规则"
+      },
+      "Special:CH0309_Ex": {
+        "id": "parameter.Special:CH0309_Ex",
+        "handler": "action.inspect",
+        "status": "state_only",
+        "strategy": "保留昴变身普攻的 CH0309_Ex 条件分支",
+        "limitations": "不执行变身普攻的分支选择及必定暴击数值结算"
+      },
+      "Special:Fury": {
+        "id": "parameter.Special:Fury",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 Special 的 Fury 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "TargetProp:Size": {
+        "id": "parameter.TargetProp:Size",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 TargetProp 的 Size 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "TargetProp:Id": {
+        "id": "parameter.TargetProp:Id",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 TargetProp 的 Id 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "BuffCount:Special_LittleDevil": {
+        "id": "parameter.BuffCount:Special_LittleDevil",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 BuffCount 的 Special_LittleDevil 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "Special:FormChange": {
+        "id": "parameter.Special:FormChange",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 Special 的 FormChange 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "TargetProp:ArmorType": {
+        "id": "parameter.TargetProp:ArmorType",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 TargetProp 的 ArmorType 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "Special:CH0187Mod": {
+        "id": "parameter.Special:CH0187Mod",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 Special 的 CH0187Mod 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "Special:CH0224_Public": {
+        "id": "parameter.Special:CH0224_Public",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 Special 的 CH0224_Public 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "BuffCount:Special_CH0231_ExtraPassive": {
+        "id": "parameter.BuffCount:Special_CH0231_ExtraPassive",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 BuffCount 的 Special_CH0231_ExtraPassive 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "Special:CH0239_ExtraPassive": {
+        "id": "parameter.Special:CH0239_ExtraPassive",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 Special 的 CH0239_ExtraPassive 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "SkillLevel:ExtraPassive": {
+        "id": "parameter.SkillLevel:ExtraPassive",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 SkillLevel 的 ExtraPassive 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "Special:CH0280_Ex_01": {
+        "id": "parameter.Special:CH0280_Ex_01",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 Special 的 CH0280_Ex_01 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      },
+      "TargetProp:School": {
+        "id": "parameter.TargetProp:School",
+        "handler": "condition.validate",
+        "status": "partial",
+        "strategy": "使用 TargetProp 的 School 字段规则",
+        "limitations": "保持当前条件路径；Size 等缺失外部属性目前会放行，尚不保证人工事实完整验证"
+      }
+    },
+    "conditionOperands": {
+      "Special:Equal": {
+        "id": "operand.Special:Equal",
+        "handler": "action.inspect",
+        "status": "state_only",
+        "strategy": "保留普攻 Special 数值相等条件",
+        "limitations": "尚未将状态比较结果用于普攻动作、效果选择与状态消费"
+      },
+      "Special:Exists": {
+        "id": "operand.Special:Exists",
+        "handler": "condition.validate",
+        "status": "implemented",
+        "strategy": "现有 Special 条件操作 Exists"
+      },
+      "TargetProp:Equal": {
+        "id": "operand.TargetProp:Equal",
+        "handler": "condition.validate",
+        "status": "implemented",
+        "strategy": "现有 TargetProp 条件操作 Equal"
+      },
+      "BuffCount:(missing)": {
+        "id": "operand.BuffCount:(missing)",
+        "handler": "condition.validate",
+        "status": "implemented",
+        "strategy": "现有 BuffCount 条件操作 区间判断"
+      },
+      "SkillLevel:(missing)": {
+        "id": "operand.SkillLevel:(missing)",
+        "handler": "condition.validate",
+        "status": "implemented",
+        "strategy": "现有 SkillLevel 条件操作 区间判断"
+      },
+      "TargetProp:NotEqual": {
+        "id": "operand.TargetProp:NotEqual",
+        "handler": "condition.validate",
+        "status": "implemented",
+        "strategy": "现有 TargetProp 条件操作 NotEqual"
+      }
+    }
+  },
+  "triggers": {
+    "manual.ex": {
+      "id": "trigger.manual.ex",
+      "handler": "trigger.manual",
+      "status": "manual_fact",
+      "strategy": "用户插入 EX 事实",
+      "limitations": "校验来源一致性、帧数和已登记外部事实；不验证真实外部战况，普通 EX 不强制额外原因",
+      "mode": "manual",
+      "reasons": [
+        "external_state"
+      ]
+    },
+    "manual.public": {
+      "id": "trigger.manual.public",
+      "handler": "trigger.manual",
+      "status": "manual_fact",
+      "strategy": "用户选择公共技能触发时机",
+      "limitations": "校验概率、Size 外部条件和攻击次数 NS 的原因；未结构化的随机/血量条件仍依赖用户事实，不推导真实战况",
+      "mode": "manual",
+      "reasons": [
+        "interval",
+        "chance",
+        "action_event",
+        "hp_threshold"
+      ]
+    },
+    "manual.extra_passive": {
+      "id": "trigger.manual.extra_passive",
+      "handler": "trigger.manual",
+      "status": "manual_fact",
+      "strategy": "用户选择额外被动触发事实",
+      "limitations": "校验来源及效果中已登记的概率/外部属性原因；不验证真实攻击、换弹、血量事实",
+      "mode": "manual",
+      "reasons": [
+        "action_event",
+        "hp_threshold",
+        "external_state"
+      ]
+    },
+    "manual.extra_ex": {
+      "id": "trigger.manual.extra_ex",
+      "handler": "trigger.manual",
+      "status": "manual_fact",
+      "strategy": "用户选择变体技能并满足现有形态校验",
+      "limitations": "深层变体仅登记路径；不扩展现有 SkillRef 的可执行范围",
+      "mode": "manual",
+      "reasons": [
+        "external_state"
+      ]
+    },
+    "opening.passive": {
+      "id": "trigger.opening.passive",
+      "handler": "trigger.opening",
+      "status": "implemented",
+      "strategy": "沿用强化/专武开局效果",
+      "mode": "battle_start"
+    },
+    "opening.rule": {
+      "id": "trigger.opening.rule",
+      "handler": "trigger.opening",
+      "status": "partial",
+      "strategy": "按开局规则选取效果、合成状态或初始 Cost",
+      "limitations": "含部分仅记录状态的能力；10144 仍按满编 6 人折算且未处理抑制条件",
+      "mode": "battle_start"
+    },
+    "ns.interval": {
+      "id": "trigger.ns.interval",
+      "handler": "trigger.ns",
+      "status": "partial",
+      "strategy": "兼容外部预排：按显式秒数登记，引擎验证技能、爱用品、正整数周期倍数及重复事件；新引擎调度另需 nsScheduling 逐技能登记",
+      "limitations": "外部事实受控或冲突时仍拒绝，不自动改帧；只有显式启用且通过 nsScheduling 审查的内部生成事件允许等待后重置周期",
+      "mode": "interval"
+    },
+    "ns.attack_count": {
+      "id": "trigger.ns.attack_count",
+      "handler": "trigger.ns",
+      "status": "partial",
+      "strategy": "普攻次数近似值只生成待确认建议；确认后作为 action_event 人工事实",
+      "limitations": "建议不进入引擎；不具备完整攻击/换弹与 NS 打断账本，拒绝攻击次数型自动事件",
+      "mode": "attack_count"
+    },
+    "linked.self_ex": {
+      "id": "trigger.linked.self_ex",
+      "handler": "trigger.linked",
+      "status": "implemented",
+      "strategy": "关联自身 EX Buff 的生效与失效",
+      "mode": "self_ex"
+    }
+  },
+  "opening": {
+    "epIds": [
+      20000,
+      20001,
+      20002,
+      23000,
+      23001,
+      23002,
+      23003,
+      23004,
+      23005,
+      26000,
+      26001,
+      26002,
+      26003,
+      26004,
+      26005,
+      20003,
+      23006,
+      10016,
+      13011,
+      10017,
+      26006,
+      23007,
+      20004,
+      20005,
+      20006,
+      23008,
+      20007,
+      20008,
+      20009,
+      20010,
+      20011,
+      20012,
+      20013,
+      20014,
+      20015,
+      20016,
+      16009,
+      20017,
+      26007,
+      26008,
+      10048,
+      20018,
+      20019,
+      20020,
+      10055,
+      20021,
+      20022,
+      10059,
+      20023,
+      20024,
+      20025,
+      10066,
+      26009,
+      20026,
+      10072,
+      26010,
+      20027,
+      20028,
+      20029,
+      13013,
+      20030,
+      20031,
+      26011,
+      20032,
+      20033,
+      10088,
+      20034,
+      20035,
+      20036,
+      10096,
+      20037,
+      26012,
+      10099,
+      10100,
+      26013,
+      20038,
+      20039,
+      10105,
+      10106,
+      20040,
+      10112,
+      26014,
+      10111,
+      20041,
+      20042,
+      10113,
+      20043,
+      10115,
+      20044,
+      10118,
+      20045,
+      20046,
+      10121,
+      20047,
+      26015,
+      20048,
+      10122,
+      10125,
+      10126,
+      20049,
+      20050,
+      20051,
+      20052,
+      20053,
+      20054,
+      10134,
+      20055,
+      20056,
+      10138,
+      20057,
+      10140,
+      16020,
+      20058,
+      20059,
+      10142,
+      10146,
+      10148,
+      20060,
+      26016
+    ],
+    "public": {
+      "10011": {
+        "kind": "public",
+        "effectIndices": [],
+        "initialCostByLevel": [
+          2,
+          2.1,
+          2.2,
+          2.6,
+          2.7,
+          2.8,
+          3.2,
+          3.3,
+          3.4,
+          3.8
+        ]
+      },
+      "10015": {
+        "kind": "gear_public",
+        "effectIndices": [],
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "EnergyBatteryHalf"
+          }
+        ]
+      },
+      "10086": {
+        "kind": "public"
+      },
+      "10144": {
+        "kind": "public",
+        "effectIndices": [],
+        "initialCostByLevel": [
+          2.22,
+          2.34,
+          2.46,
+          2.88,
+          3,
+          3.12,
+          3.6,
+          3.66,
+          3.78,
+          4.26
+        ]
+      },
+      "20027": {
+        "kind": "public"
+      },
+      "20053": {
+        "kind": "public"
+      }
+    },
+    "overrides": {
+      "10055": {
+        "effectIndices": [],
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "NormalAttackAreaOverride_Shigure",
+            "Scale": [
+              6167,
+              6290,
+              6414,
+              6909,
+              7033,
+              7157,
+              7644,
+              7768,
+              7892,
+              8387
+            ]
+          }
+        ]
+      },
+      "10059": {
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "GuaranteedCritical"
+          }
+        ]
+      },
+      "10066": {
+        "effectIndices": [],
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "NormalAttackOverride_MaidAris"
+          }
+        ]
+      },
+      "10099": {
+        "effectIndices": [
+          0
+        ],
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "IgnoreDefense",
+            "Scale": [
+              6000,
+              6000,
+              6000,
+              6000,
+              6000,
+              6000,
+              6000,
+              6000,
+              6000,
+              8500
+            ]
+          }
+        ]
+      },
+      "10105": {
+        "effectIndices": [
+          1
+        ]
+      },
+      "10113": {
+        "effectIndices": [],
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "NormalAttackAreaOverride_CasualSena",
+            "Scale": [
+              6167,
+              6290,
+              6414,
+              6909,
+              7033,
+              7157,
+              7644,
+              7768,
+              7892,
+              8387
+            ]
+          }
+        ]
+      },
+      "10115": {
+        "effectIndices": [
+          0
+        ]
+      },
+      "10118": {
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "GuaranteedCritical"
+          }
+        ]
+      },
+      "10121": {
+        "effectIndices": [
+          0
+        ]
+      },
+      "10134": {
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "AllDamageCountsAsEx"
+          }
+        ]
+      },
+      "10140": {
+        "effectIndices": [
+          0
+        ]
+      },
+      "10146": {
+        "effectIndices": [
+          0
+        ]
+      },
+      "16020": {
+        "syntheticEffects": [
+          {
+            "Type": "Special",
+            "Target": "Self",
+            "Key": "NormalDamageScalesWithExBuff"
+          }
+        ]
+      }
+    },
+    "selfExEpIds": [
+      10045
+    ]
+  },
+  "ns": {
+    "10000": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10001": {
+      "kind": "interval",
+      "seconds": 15
+    },
+    "10002": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10003": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10006": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10007": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10008": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10010": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10012": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10014": {
+      "kind": "attack_count",
+      "count": 6
+    },
+    "10015": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10016": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10017": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10018": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10019": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10021": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10022": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "10023": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10024": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10025": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10026": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10027": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10028": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10029": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10030": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10031": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10032": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10033": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10034": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "10035": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10036": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "10038": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10039": {
+      "kind": "attack_count",
+      "count": 5
+    },
+    "10040": {
+      "kind": "attack_count",
+      "count": 7
+    },
+    "10041": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10042": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10043": {
+      "kind": "interval",
+      "seconds": 60
+    },
+    "10044": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10045": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10046": {
+      "kind": "attack_count",
+      "count": 6
+    },
+    "10047": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10048": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10049": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10051": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10052": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10053": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10054": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "10055": {
+      "kind": "interval",
+      "seconds": 60
+    },
+    "10056": {
+      "kind": "attack_count",
+      "count": 21
+    },
+    "10057": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10059": {
+      "kind": "attack_count",
+      "count": 5
+    },
+    "10060": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10061": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10062": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10063": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10064": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10065": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10066": {
+      "kind": "attack_count",
+      "count": 15
+    },
+    "10067": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10068": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10069": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10070": {
+      "kind": "attack_count",
+      "count": 8
+    },
+    "10071": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10072": {
+      "kind": "attack_count",
+      "count": 15
+    },
+    "10074": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10075": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10077": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10078": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10079": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10080": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10081": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10082": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10083": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10084": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "10085": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10087": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10088": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10089": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10090": {
+      "kind": "attack_count",
+      "count": 10
+    },
+    "10091": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10092": {
+      "kind": "attack_count",
+      "count": 10
+    },
+    "10093": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10094": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "10095": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10096": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10097": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10098": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10100": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10101": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10102": {
+      "kind": "attack_count",
+      "count": 12
+    },
+    "10103": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10104": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10105": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10106": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10107": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10108": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10110": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10111": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10112": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10113": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10114": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "10118": {
+      "kind": "attack_count",
+      "count": 12
+    },
+    "10119": {
+      "kind": "attack_count",
+      "count": 12
+    },
+    "10120": {
+      "kind": "attack_count",
+      "count": 15
+    },
+    "10121": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10122": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10123": {
+      "kind": "attack_count",
+      "count": 12
+    },
+    "10124": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10125": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10126": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10127": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10128": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10129": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10133": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10137": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10138": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10139": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10141": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "10142": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "10143": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "10145": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "10146": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10147": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "10148": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "13000": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "13001": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "13004": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "13005": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "13006": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "13008": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "13010": {
+      "kind": "interval",
+      "seconds": 15
+    },
+    "13011": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "13012": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "13013": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "13014": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "16000": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "16001": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "16002": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "16003": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "16005": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "16006": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "16007": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "16009": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "16010": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "16011": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "16012": {
+      "kind": "attack_count",
+      "count": 21
+    },
+    "16013": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "16014": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "16015": {
+      "kind": "attack_count",
+      "count": 12
+    },
+    "16016": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "16017": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "16018": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "16019": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20000": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "20001": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20002": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "20003": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "20004": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20005": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "20006": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20007": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20008": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "20009": {
+      "kind": "interval",
+      "seconds": 15
+    },
+    "20010": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "20011": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20012": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20013": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20014": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20015": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20016": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20017": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20018": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20019": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20020": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20021": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20022": {
+      "kind": "interval",
+      "seconds": 60
+    },
+    "20023": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20024": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "20025": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20026": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "20028": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20029": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "20030": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20031": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "20032": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "20033": {
+      "kind": "interval",
+      "seconds": 55
+    },
+    "20034": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20035": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "20036": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20037": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "20038": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20039": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20040": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20041": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20042": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "20043": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20046": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20048": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20049": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "20055": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20056": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "20059": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "20060": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "23000": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "23001": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "23002": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "23003": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "23004": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "23005": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "23006": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "23007": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "23008": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "26000": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "26001": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "26002": {
+      "kind": "interval",
+      "seconds": 20
+    },
+    "26003": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "26004": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "26005": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "26006": {
+      "kind": "interval",
+      "seconds": 25
+    },
+    "26007": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "26008": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "26009": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "26010": {
+      "kind": "interval",
+      "seconds": 70
+    },
+    "26011": {
+      "kind": "interval",
+      "seconds": 45
+    },
+    "26012": {
+      "kind": "interval",
+      "seconds": 50
+    },
+    "26013": {
+      "kind": "interval",
+      "seconds": 30
+    },
+    "26014": {
+      "kind": "interval",
+      "seconds": 40
+    },
+    "26015": {
+      "kind": "interval",
+      "seconds": 35
+    },
+    "26016": {
+      "kind": "interval",
+      "seconds": 35
+    }
+  },
+  "band": {
+    "exGrants": {
+      "10091": [
+        [
+          1,
+          1,
+          1,
+          1,
+          2
+        ]
+      ],
+      "10092": [
+        [
+          5
+        ]
+      ],
+      "10120": [
+        [
+          2
+        ]
+      ],
+      "16015": [
+        [
+          1
+        ]
+      ]
+    },
+    "caps": {
+      "10091:CH0220_Public": 2,
+      "10092:CH0220_Public": 5,
+      "10120:CH0220_Public": 2,
+      "16015:CH0220_Public": 1
+    },
+    "decays": [
+      {
+        "issuerId": 10092,
+        "key": "CH0220_Public",
+        "everyMs": 10000,
+        "remove": 1
+      }
+    ],
+    "grants": [
+      {
+        "issuerId": 10120,
+        "sourceKey": "CH0220_Public",
+        "perLayers": 6,
+        "targetKey": "CH0221_ExtraPassive",
+        "cap": 4
+      }
+    ],
+    "damage": {
+      "10091": {
+        "skillRefs": [
+          "extra_passive"
+        ],
+        "kind": "self-layer-multiplier",
+        "key": "CH0220_Public"
+      },
+      "10092": {
+        "skillRefs": [
+          "public"
+        ],
+        "kind": "team-layer-multiplier",
+        "key": "CH0220_Public",
+        "perLayer": 0.05,
+        "maxLayers": 8
+      }
+    }
+  },
+  "dispel": {
+    "default": {
+      "id": "dispel.student-removable-default",
+      "handler": "effect.dispel",
+      "status": "partial",
+      "strategy": "沿用学生侧广泛驱散默认类别",
+      "limitations": "尚未逐技能区分可驱散性、阵营与指定种类",
+      "removeTypes": [
+        "Buff",
+        "DamageDebuff",
+        "Shield",
+        "CrowdControl",
+        "Knockback",
+        "Summon",
+        "Special",
+        "Accumulation",
+        "ConcentratedTarget",
+        "CostChange"
+      ]
+    }
+  },
+  "skills": {
+    "10000": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10001": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10002": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10003": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10004": {"E":["manual.ex"],"P":["manual.public"],"G":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10005": {"E":["manual.ex"],"P":["manual.public"],"G":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10006": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10007": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10008": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10009": {"E":["manual.ex"],"P":["manual.public"],"G":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10010": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10011": {"E":["manual.ex"],"P":["manual.public","opening.rule"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10012": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10013": {"E":["manual.ex"],"P":["manual.public"],"G":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10014": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10015": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval","opening.rule"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10016": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10017": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10018": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10019": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10020": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10021": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10022": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10023": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10024": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10025": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10026": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10027": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10028": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10029": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10030": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10031": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10032": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10033": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10034": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10035": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10036": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10037": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10038": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10039": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"G":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10040": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10041": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10042": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10043": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10044": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10045": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","linked.self_ex"]},
+    "10046": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10047": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10048": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10049": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10050": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10051": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10052": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10053": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10054": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10055": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10056": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10057": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10058": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10059": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10060": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10061": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10062": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10063": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10064": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10065": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10066": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"G":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10067": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10068": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10069": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10070": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10071": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10072": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10073": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10074": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10075": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10076": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10077": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10078": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10079": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10080": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10081": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10082": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10083": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10084": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10085": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10086": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"E.ExtraSkills[1]":["manual.extra_ex"],"E.ExtraSkills[2]":["manual.extra_ex"],"P":["manual.public","opening.rule"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10087": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10088": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10089": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10090": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"G":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10091": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10092": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10093": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10094": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10095": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10096": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10097": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10098": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10099": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10100": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10101": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10102": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10103": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10104": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10105": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10106": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10107": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10108": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10109": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10110": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10111": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10112": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10113": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10114": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10115": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10116": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10117": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10118": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10119": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10120": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10121": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10122": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"E.ExtraSkills[1]":["manual.extra_ex"],"E.ExtraSkills[2]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10123": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10124": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10125": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10126": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10127": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10128": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10129": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10130": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10131": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10132": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10133": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10134": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"E.ExtraSkills[1]":["manual.extra_ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10135": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10136": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10137": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10138": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10139": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10140": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10141": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10142": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10143": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10144": {"E":["manual.ex"],"P":["manual.public","opening.rule"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10145": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10146": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "10147": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "10148": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "13000": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13001": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13002": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13003": {"E":["manual.ex"],"P":["manual.public"],"G":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13004": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13005": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13006": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13007": {"E":["manual.ex"],"P":["manual.public"],"G":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13008": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13009": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13010": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13011": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "13012": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "13013": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "13014": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16000": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16001": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16002": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16003": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16004": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16005": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16006": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16007": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16008": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16009": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "16010": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16011": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16012": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16013": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16014": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16015": {"E":["manual.ex"],"P":["manual.public","ns.attack_count"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16016": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16017": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16018": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"E.ExtraSkills[1]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16019": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive"]},
+    "16020": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20000": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20001": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20002": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20003": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20004": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20005": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20006": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20007": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20008": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20009": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20010": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20011": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20012": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20013": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20014": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20015": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20016": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20017": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20018": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20019": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20020": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20021": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20022": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20023": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20024": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20025": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20026": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20027": {"E":["manual.ex"],"P":["manual.public","opening.rule"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20028": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20029": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20030": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20031": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20032": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20033": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20034": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20035": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20036": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20037": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20038": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20039": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20040": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20041": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20042": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20043": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20044": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20045": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20046": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20047": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20048": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20049": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20050": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20051": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20052": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20053": {"E":["manual.ex"],"P":["manual.public","opening.rule"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20054": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20055": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20056": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20057": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20058": {"E":["manual.ex"],"P":["manual.public"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20059": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "20060": {"E":["manual.ex"],"E.ExtraSkills[0]":["manual.extra_ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23000": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23001": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23002": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23003": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23004": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23005": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23006": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23007": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "23008": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26000": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26001": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26002": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26003": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26004": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26005": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"G":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26006": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26007": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26008": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26009": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26010": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26011": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26012": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26013": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26014": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26015": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]},
+    "26016": {"E":["manual.ex"],"P":["manual.public","ns.interval"],"PS":["opening.passive"],"WP":["opening.passive"],"EP":["manual.extra_passive","opening.rule"]}
+  }
+}

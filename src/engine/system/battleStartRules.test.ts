@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import studentData from '../../data/students.min.json' with { type: 'json' }
 import type { Student, StudentDB } from '../../types/student'
 import { SimulationEngine } from '../core/simulationEngine'
-import { automaticTriggerSpecs } from './triggerSpecs'
-import { resolveSkill } from './studentEffectSystem'
+import { rules } from '../../domain/rules/GameRules'
+import { resolveSkill } from './SkillResolver'
 
 const database = studentData as unknown as StudentDB
 const students = Object.values(database)
@@ -46,21 +46,21 @@ describe('versioned battle-start NS/SS rules', () => {
 
     const actual = new Set<string>()
     for (const value of students) {
-      for (const spec of automaticTriggerSpecs(value)) {
+      for (const spec of rules.trigger.automatic(value)) {
         const kind = spec.skillRef.kind === 'public' ? 'P' : spec.skillRef.kind === 'gear_public' ? 'G' : spec.skillRef.kind === 'extra_passive' ? 'EP' : null
         if (kind) actual.add(`${value.Id}:${kind}`)
       }
     }
 
     expect(actual).toEqual(expected)
-    expect([...actual].filter(key => key.endsWith(':P'))).toHaveLength(4)
+    expect([...actual].filter(key => key.endsWith(':P'))).toHaveLength(5)
     expect([...actual].filter(key => key.endsWith(':G'))).toHaveLength(1)
-    expect([...actual].filter(key => key.endsWith(':EP'))).toHaveLength(115)
+    expect([...actual].filter(key => key.endsWith(':EP'))).toHaveLength(119)
   })
 
   it('references valid source effects and never executes opening Damage directly', () => {
     for (const value of students) {
-      for (const spec of automaticTriggerSpecs(value)) {
+      for (const spec of rules.trigger.automatic(value)) {
         if (!['public', 'gear_public', 'extra_passive'].includes(spec.skillRef.kind)) continue
         const skill = resolveSkill(value, spec.skillRef, { ex: 5, ns: 10, ss: 10 })
         expect(skill, `${value.Name}:${spec.skillRef.kind}`).not.toBeNull()

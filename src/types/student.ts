@@ -36,7 +36,7 @@ export interface SkillEffect {
   Duration?: number
   /** 伤害/治疗倍率 */
   Scale?: number[]
-  /** 击中次数 */
+  /** 各伤害段的权重；不是普攻次数，也不提供各段生效帧 */
   Hits?: number[]
   /** 目标类型 — 可为单字符串或字符串数组 */
   Target?: string | string[]
@@ -130,7 +130,27 @@ export interface PassiveSkill {
   Effects: SkillEffect[]
 }
 
+/** 保留原始普攻数据；这些伤害字段尚不代表已经参与战斗数值结算。 */
+export interface NormalAttackEffect extends SkillEffect {
+  IgnoreDef?: number[]
+  OverrideSkillDamageType?: string
+  AdditionalDamage?: boolean
+  ExcludeDesc?: boolean
+  StatModifier?: {
+    Stat: string
+    Source: string
+    MinStatValue: number
+    MaxStatValue: number
+    MultiplierMin: number
+    MultiplierMax: number
+  }
+}
+
 export interface NormalAttack {
+  /** 旧快照可能缺失；缺失不等于空效果，更不能据此开放自动调度。 */
+  Effects?: NormalAttackEffect[]
+  FormChange?: NormalAttack
+  FixedFrameRate?: number
   /** 帧数据（单位：帧） */
   Frames: {
     AttackEnterDuration: number
@@ -142,7 +162,7 @@ export interface NormalAttack {
     AttackReadyStartDuration?: number
     AttackReadyEndDuration?: number
   }
-  Radius?: { Type: string; Radius: number }[]
+  Radius?: { Type: string; Radius?: number; Degree?: number; Width?: number; Height?: number }[]
 }
 
 export interface StudentSkills {
@@ -202,7 +222,7 @@ export interface Student {
 
   /** 弹药数 */
   Ammo: number
-  /** 每发弹药消耗 */
+  /** 原始 AmmoCost；消耗时点由动作规则定义，不从 Hits 推导 */
   AmmoCost: number
   Range: number
   Sight: number
@@ -213,6 +233,15 @@ export interface Student {
   Favor: { t: string; v: number[] }[]
 
   Skills: StudentSkills
+
+  /** 该学生可由技能生成的召唤单位（来自 SchaleDB Summons）。 */
+  Summons?: Array<{
+    Id: number
+    SourceSkill: 'Ex' | 'Public' | string
+    ObstacleMaxHP1?: number
+    ObstacleMaxHP100?: number
+    ObstacleSize?: [number, number]
+  }>
 
   Weapon: {
     ATK: number

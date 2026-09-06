@@ -6,12 +6,15 @@
  */
 
 import { create } from 'zustand'
-import type { SimulationResult, SimulationError } from '../engine/model/types'
-import { runSimulation } from '../engine/bridge'
+import type { SimulationResult, SimulationError } from '../engine'
+import { runSimulation } from '../engine'
 import { useTimelineStore } from './useTimelineStore'
 import { useStudentStore } from './useStudentStore'
 import { useSquadStore } from './useSquadStore'
 import { useBossStore } from './useBossStore'
+import { currentPlanSnapshot } from './currentPlan'
+import { scheduleSimulation } from './simulationTransaction'
+import { alignNsScheduling, useNsSchedulingStore } from './useNsSchedulingStore'
 
 const TERRAIN_INDEX: Record<string, number> = { Street: 0, Outdoor: 1, Indoor: 2 }
 
@@ -31,7 +34,9 @@ export const useSimulationStore = create<SimulationStore>((set) => {
   const doSimulate = () => {
     const lanes = useTimelineStore.getState().lanes
     const studentDb = useStudentStore.getState().students
-    const deckOrder = useSquadStore.getState().deckOrder
+    const squadState = useSquadStore.getState()
+    const deckOrder = squadState.deckOrder
+    const slotLevels = squadState.config.slots
     // 读取 Boss 配置
     const bossState = useBossStore.getState()
     if (!studentDb) {
@@ -44,32 +49,49 @@ export const useSimulationStore = create<SimulationStore>((set) => {
       Object.entries(studentDb).map(([k, v]) => [parseInt(k), v]),
     )
 
-    const result = runSimulation(
-      lanes, students,
-      bossState.selectedBossId || undefined,
-      bossState.selectedDifficulty,
-      bossState.selectedArmorType,
-      TERRAIN_INDEX[bossState.selectedTerrain] ?? 0,
+    const result = runSimulation({
+      maxFrame: currentPlanSnapshot().env.maxFrame,
+      lanes,
+      students,
+      slotLevels,
       deckOrder,
-    )
+      bossId: bossState.selectedBossId || undefined,
+      difficulty: bossState.selectedDifficulty,
+      armorType: bossState.selectedArmorType,
+      terrain: TERRAIN_INDEX[bossState.selectedTerrain] ?? 0,
+      nsScheduling: alignNsScheduling(useNsSchedulingStore.getState().config, lanes.map(lane => lane.student?.Id ?? null)),
+    })
     set({ result, computing: false })
   }
 
   // 订阅 TimelineStore + SquadStore + BossStore 变更 → 自动推演（防抖 200ms）
   useTimelineStore.subscribe(() => {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    set({ computing: true })
-    debounceTimer = setTimeout(doSimulate, 200)
+    scheduleSimulation(() => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      set({ computing: true })
+      debounceTimer = setTimeout(doSimulate, 200)
+    })
   })
   useSquadStore.subscribe(() => {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    set({ computing: true })
-    debounceTimer = setTimeout(doSimulate, 200)
+    scheduleSimulation(() => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      set({ computing: true })
+      debounceTimer = setTimeout(doSimulate, 200)
+    })
   })
   useBossStore.subscribe(() => {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    set({ computing: true })
-    debounceTimer = setTimeout(doSimulate, 200)
+    scheduleSimulation(() => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      set({ computing: true })
+      debounceTimer = setTimeout(doSimulate, 200)
+    })
+  })
+  useNsSchedulingStore.subscribe(() => {
+    scheduleSimulation(() => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      set({ computing: true })
+      debounceTimer = setTimeout(doSimulate, 200)
+    })
   })
 
   return {

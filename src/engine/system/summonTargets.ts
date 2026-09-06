@@ -1,5 +1,23 @@
 import type { EffectAuditRecord, SummonInstance } from '../model/types'
 
+export interface SummonRef {
+  summonId: number
+  sourceEventId: string
+  spawnIndex: number
+}
+
+/** 把可复现的召唤物引用解析为当前在场实例 ID；找不到则返回空（由调用方报错）。 */
+export function resolveSummonRefs(
+  summons: ReadonlyArray<Pick<SummonInstance, 'active' | 'instanceId' | 'summonId' | 'sourceEventId' | 'spawnIndex'>>,
+  refs: SummonRef[] | undefined,
+): string[] {
+  if (!refs?.length) return []
+  return refs.flatMap(ref => {
+    const instance = summons.find(summon => summon.active && summon.summonId === ref.summonId && summon.sourceEventId === ref.sourceEventId && summon.spawnIndex === ref.spawnIndex)
+    return instance ? [instance.instanceId] : []
+  })
+}
+
 /** 从审计流重建指定帧仍可作为目标的召唤物。 */
 export function activeSummonsAtFrame(audit: EffectAuditRecord[] | undefined, frame: number): SummonInstance[] {
   if (!audit) return []

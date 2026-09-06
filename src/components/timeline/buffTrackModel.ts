@@ -1,4 +1,4 @@
-import type { EffectAuditRecord } from '../../engine/model/types'
+import type { EffectAuditRecord } from '../../engine'
 
 export const VISIBLE_EFFECT_TYPES = new Set([
   'Buff',

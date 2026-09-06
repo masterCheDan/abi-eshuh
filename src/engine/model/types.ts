@@ -5,39 +5,22 @@
  * 引擎是纯 TS 沙盒，零 React / Zustand 依赖。
  */
 
+import type { SkillRef, SummonKind, EffectAuditAction, TriggerSource, TriggerEvidence } from '../../domain/types'
+import type { NsSchedulingConfig, NsSchedulingEligibility } from '../../domain/rules/nsSchedulingRules'
+export type { NsSchedulingConfig } from '../../domain/rules/nsSchedulingRules'
+
+// 领域层下沉类型的 re-export，保持引擎侧既有 import 不破。
+export type {
+  SkillRef,
+  SummonKind,
+  TriggerSource,
+  TriggerEvidence,
+  ManualTriggerReason,
+} from '../../domain/types'
+
 // ═══════════════════════════════════════════════════
 // 1. 意图 (Intent) — 唯一事实来源
 // ═══════════════════════════════════════════════════
-
-/** 学生技能的稳定引用；不依赖展示名称，支持变身后的 EX。 */
-export type SkillRef =
-  | { kind: 'ex' }
-  | { kind: 'public' }
-  | { kind: 'gear_public' }
-  | { kind: 'passive' }
-  | { kind: 'weapon_passive' }
-  | { kind: 'extra_passive' }
-  | { kind: 'extra_ex'; extraSkillId?: string; extraSkillIndex?: number }
-
-/** 不确定条件的结论必须由用户显式录入，保证推演可复现。 */
-export type TriggerSource = 'automatic' | 'manual'
-
-/** 用户对无法从学生数据确定的战况所作出的可审计确认。 */
-export type ManualTriggerReason =
-  | 'chance'
-  | 'random_target'
-  | 'hp_threshold'
-  | 'external_state'
-  | 'action_event'
-  | 'interval'
-
-export interface TriggerEvidence {
-  source: TriggerSource
-  /** manual 时至少记录一个用户确认的事实；automatic 不需要。 */
-  reasons?: ManualTriggerReason[]
-  /** 条件型或 Duration=-1 效果由用户确认的失效帧。 */
-  conditionEndFrame?: number
-}
 
 export interface Intent {
   /** 唯一标识，支持增删改查 */
@@ -50,8 +33,10 @@ export interface Intent {
   issuerId: number
   /** 目标学生 ID 列表；-1 = Boss */
   targetIds: number[]
-  /** 已在场的召唤物实例 ID。与 targetIds 分开保存以兼容旧分享码。 */
+  /** 已在场召唤物的稳定实例 ID。 */
   targetSummonIds?: string[]
+  /** 可跨分享码复现的召唤物逻辑引用。 */
+  targetSummonRefs?: Array<{ summonId: number; sourceEventId: string; spawnIndex: number }>
   /** 优先级 (CC > User_EX > System_NS) */
   priority: number
   /** 具体技能；旧轴码省略时按 type 推导。 */
@@ -96,6 +81,8 @@ export interface Formation {
   starLevels?: number[]
   /** 专武等级；0=未解锁，1-4=专武星级，按 slotIndex 排列。 */
   uniqueWeaponLevels?: number[]
+  /** 爱用品状态；0=未装备，1=T1，2=T2，按 slotIndex 排列，缺失默认 1。 */
+  gearLevels?: number[]
 }
 
 // ═══════════════════════════════════════════════════
@@ -111,7 +98,7 @@ export interface ActionRecord {
   actionType: ActionType
   startFrame: number
   /** 首个效果生效帧 */
-  effectFrame: number
+  effectFrame?: number
   endFrame: number
   /** 是否被 EX/CC 中途打断 */
   wasInterrupted: boolean
@@ -119,6 +106,56 @@ export interface ActionRecord {
   isManualOverride: boolean
   /** 打断该动作的帧（被中断时填写） */
   interruptedAt?: number
+  sourceEventId?: string
+  ownerId?: number
+  skillRef?: SkillRef
+  plannedEndFrame?: number
+  status?: 'running' | 'completed' | 'interrupted'
+  nsScheduleId?: string
+  triggerFrame?: number
+}
+
+export interface ActionEvent {
+  frame: number
+  actionId: string
+  studentId: number
+  slotIndex: number
+  type: 'started' | 'effect_applied' | 'completed' | 'interrupted' | 'control_updated'
+  reason?: string
+  effectIndex?: number
+  targetIds?: Array<number | string>
+  ammoBefore: number
+  ammoAfter: number
+  attackCountBefore: number
+  attackCountAfter: number
+}
+
+export interface SchedulingDiagnostic {
+  studentId: number
+  code: string
+  path: string
+  message: string
+  frame?: number
+  actionId?: string
+}
+
+export interface NsScheduleRecord {
+  id: string
+  studentId: number
+  slotIndex: number
+  skillRef: SkillRef
+  triggerFrame: number
+  castFrame?: number
+  actionId?: string
+  status: 'waiting' | 'executed' | 'rejected' | 'interrupted'
+  waits: Array<{ startFrame: number; endFrame?: number; reason: 'action' | 'control' }>
+  message?: string
+}
+
+export interface NsSchedulingResult {
+  config?: NsSchedulingConfig
+  slots: Array<NsSchedulingEligibility & { studentId: number; slotIndex: number; mode: 'manual' | 'automatic'; requestedMode: 'manual' | 'automatic' }>
+  records: NsScheduleRecord[]
 }
 
 // ═══════════════════════════════════════════════════
@@ -129,17 +166,19 @@ export interface SimulationError {
   frame: number
   issuerId: number
   message: string
-  type: 'COST_EXCEEDED' | 'OUT_OF_WINDOW' | 'COOLDOWN' | 'INVALID_TARGET' | 'INVALID_CONDITION'
+  type: 'COST_EXCEEDED' | 'OUT_OF_WINDOW' | 'COOLDOWN' | 'INVALID_TARGET' | 'INVALID_CONDITION' | 'INVALID_TRIGGER'
 }
 
 export interface EffectAuditRecord {
+  /** 引擎分配的施放实例，不使用可能重复的外部事件 ID 作取消键。 */
+  actionId?: string
   frame: number
   issuerId: number
   targetIds: Array<number | string>
   skillRef: SkillRef
   effectIndex: number
   effectType: string
-  action: 'scheduled' | 'applied' | 'expired' | 'used' | 'consumed' | 'rejected' | 'replaced' | 'dispelled' | 'ticked'
+  action: EffectAuditAction
   detail?: string
   /** Stable runtime effect instance, used to reconstruct its visible lifetime. */
   effectId?: number
@@ -166,9 +205,6 @@ export interface EffectLedgerEntry {
   hits: number
   detail?: string
 }
-
-/** 学生技能产生的召唤物类别。 */
-export type SummonKind = 'vehicle' | 'cover' | 'summoned'
 
 /** 独立的召唤物实例；同一实例可拥有多条 HP/ATK/HEAL 属性记录。 */
 export interface SummonInstance {
@@ -220,6 +256,9 @@ export interface SimulationResult {
   costHistory: number[]
   /** 纯逻辑动作记录 */
   actionLogs: ActionRecord[]
+  actionEvents: ActionEvent[]
+  schedulingDiagnostics: SchedulingDiagnostic[]
+  nsScheduling: NsSchedulingResult
   /** 错误/警告列表 */
   errors: SimulationError[]
   /** 学生技能效果的可审计执行记录。 */
